@@ -2,6 +2,9 @@
 
 A real-time collaborative whiteboard app (Miro-style) built with React, Fabric.js, Node/Express, Socket.io, and MongoDB.
 
+Full documentation lives in [docs/](docs/) — architecture, data model, REST API, socket
+events, frontend guide, deployment, and a feature-by-feature implementation status.
+
 ## Stack
 
 - **Frontend:** React 19 + Vite + TypeScript + Tailwind CSS + Fabric.js + Zustand + Socket.io-client + Framer Motion
