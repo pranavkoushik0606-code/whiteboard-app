@@ -3,7 +3,7 @@
 Reference documentation for the Collaborative Whiteboard app — what exists in the
 codebase today, how the pieces fit together, and what is still missing.
 
-Last updated: 2026-09-01 (against commit `92ceeea`).
+Last updated: 2026-09-02 (against commit `92ceeea`).
 
 ## Contents
 
@@ -16,6 +16,7 @@ Last updated: 2026-09-01 (against commit `92ceeea`).
 | [frontend.md](frontend.md) | Routes, pages, components, Zustand stores, the Fabric.js canvas engine |
 | [setup-and-deployment.md](setup-and-deployment.md) | Local run (Docker + manual), env vars, Docker/Render/Vercel configs |
 | [implementation-status.md](implementation-status.md) | Feature-by-feature status, backend-only features with no UI, known bugs |
+| [roadmap.md](roadmap.md) | The remaining work cut into shippable sprints, with estimates and dependencies |
 
 ## One-paragraph summary
 
