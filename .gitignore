@@ -6,3 +6,11 @@ build/
 .DS_Store
 server/uploads/*
 !server/uploads/.gitkeep
+
+# Build artefacts
+*.tsbuildinfo
+
+# Test output
+test-results/
+playwright-report/
+.playwright-mongo/

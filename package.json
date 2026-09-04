@@ -1,0 +1,16 @@
+{
+  "name": "whiteboard-app",
+  "private": true,
+  "type": "module",
+  "description": "Repo-root test tooling only. The deployable apps are client/ and server/, which have their own package.json — Vercel builds client/, Render builds server/ (see render.yaml rootDir).",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "e2e:install": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0",
+    "mongodb-memory-server": "^10.1.2"
+  }
+}

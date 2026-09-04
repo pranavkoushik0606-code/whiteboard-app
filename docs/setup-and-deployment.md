@@ -70,9 +70,42 @@ reachable database.
 | client | `npm run dev` | `vite` (port 5173) |
 | client | `npm run build` | `tsc -b && vite build` → `dist/` |
 | client | `npm run preview` | `vite preview` |
-| client | `npm run lint` | `eslint .` — note: **no eslint config or eslint dependency is present**, so this script fails as-is |
+| client | `npm run lint` | `eslint .` (flat config in `client/eslint.config.js`) |
+| root | `npm run test:e2e` | Playwright collaboration suite |
+| root | `npm run test:e2e:headed` | same, with a visible browser |
+| root | `npm run test:e2e:ui` | Playwright's interactive UI mode |
+| root | `npm run e2e:install` | downloads the Chromium build Playwright drives |
 
-There is no test suite.
+The repo root has a `package.json` too, but it is **test tooling only** — the deployable
+apps are `client/` and `server/`, each with its own. Vercel builds `client/`, Render builds
+`server/` via `rootDir` in `render.yaml`.
+
+## Tests
+
+```bash
+npm install          # at the repo root, once
+npm run e2e:install  # downloads Chromium, once
+npm run test:e2e
+```
+
+Nothing else needs to be running. `e2e/global-setup.ts` starts an in-memory MongoDB and
+the API server as a child process on port 5001, and `playwright.config.ts` starts Vite on
+port 5174 — both deliberately off the dev defaults so a running `npm run dev` does not
+collide. Everything is torn down when the run ends.
+
+**You do not need Docker or a local mongod.** The first run downloads a `mongod` binary
+(~100 MB) into `node_modules/.cache`; later runs reuse it.
+
+`e2e/collab.spec.ts` opens the same board in two real browser contexts and asserts that a
+rectangle drawn by one appears on the other's canvas, and that it survives a reload. That
+covers the socket broadcast, the persistence write, and the rehydrate-on-load path — the
+three things that cannot be checked by reading a diff.
+
+Assertions read `window.__fabricCanvas`, a handle set in `CanvasBoard`'s init effect under
+`import.meta.env.DEV`. Fabric renders to a bitmap, so there are no per-object DOM nodes to
+query instead. The handle does not exist in production builds.
+
+There are no unit or API tests yet.
 
 ## Deploy configs already in the repo
 

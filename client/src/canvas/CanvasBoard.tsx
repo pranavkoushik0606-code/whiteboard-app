@@ -62,6 +62,10 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     });
     fabricRef.current = canvas;
 
+    // Dev-only handle so the e2e suite can assert on canvas contents. Fabric
+    // draws to a bitmap, so there are no per-object DOM nodes to query instead.
+    if (import.meta.env.DEV) (window as any).__fabricCanvas = canvas;
+
     // Rehydrate saved objects
     initialObjects.forEach((o) => {
       fabric.util.enlivenObjects([o.data]).then(([enlivened]) => {
@@ -109,7 +113,12 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
       brush.color = strokeColor;
       brush.width =
         tool === 'highlighter' ? strokeWidth * 6 : tool === 'marker' ? strokeWidth * 3 : strokeWidth;
-      if (tool === 'highlighter') canvas.freeDrawingBrush = brush, (brush as any).opacity = 0.4;
+      // NOTE: this does nothing — Fabric 6's PencilBrush has no `opacity`.
+      // Behaviour left as-is on purpose; the real fix (an alpha stroke colour)
+      // is Sprint 6 in docs/roadmap.md. Rewritten only to satisfy eslint.
+      if (tool === 'highlighter') {
+        (brush as any).opacity = 0.4;
+      }
       canvas.freeDrawingBrush = brush;
     }
   }, [tool, strokeColor, strokeWidth]);
