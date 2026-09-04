@@ -123,13 +123,39 @@ tell from a working one.
 This closes the Sprint 2 regression: undo is now more durable than it was before either
 sprint, not less.
 
-### Sprint 4 — Version history stops being a lie · 40 min
+### Sprint 4 — Version history stops being a lie · 40 min · ✅ DONE
 
 - Call `POST /canvas/:id/versions` from an explicit "Save version" button and every Nth
   auto-save
 - Broadcast on `restoreVersion` so other people in the room don't keep the old canvas
 
 *The endpoint and its 50-version pruning already exist and have never once been called.*
+
+**What actually shipped.** "Every Nth auto-save" no longer had anything to hang on — Sprint 2
+deleted the auto-save. The automatic trigger counts **object mutations on the server** instead,
+one version per 50, which also means five people on one board produce one timeline rather than
+five. `AUTO_VERSION_EVERY` is overridable so the test does not need fifty edits to see one
+version.
+
+Snapshots are now built **server-side** from the board's own rows rather than from a body the
+client posts. The database has been the authoritative copy since Sprint 2, so this is both
+simpler for the client (the save button sends nothing but a label) and immune to a client that
+is a few events behind. It is also what lets the socket layer capture a version with no browser
+involved.
+
+Two defects found while wiring it up:
+
+`restoreVersion` looked the version up by id alone. `requireBoardAccess` proves you may write to
+*this* board, so any version id could be restored into any board you had editor rights on — it
+is now scoped to `{ _id, board }`, and a malformed id returns 404 instead of a cast error. It
+also spread the stored snapshot straight into `insertMany`; fields are mapped explicitly now.
+
+`BoardEditor`'s restore handler dropped `zIndex`, so restoring flattened the stacking order of
+every object on the board.
+
+Seven tests in `e2e/versions.spec.ts`, verified against three mutations: removing the broadcast
+fails only the room test, disabling the mutation counter fails only the automatic-capture test,
+and reverting the scoped lookup fails only the cross-board test.
 
 ### Sprint 5 — Cheap visible wins · 60 min
 

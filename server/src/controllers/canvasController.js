@@ -1,5 +1,7 @@
+import mongoose from 'mongoose';
 import CanvasObject from '../models/CanvasObject.js';
 import Version from '../models/Version.js';
+import { captureVersion } from '../services/versionService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 // Note: during an active session, real-time object create/update/delete/move
@@ -34,23 +36,12 @@ export const clearObjects = asyncHandler(async (req, res) => {
   res.json({ message: 'Canvas cleared' });
 });
 
-// @route POST /api/canvas/:boardId/versions  (manual "save version" / auto-save snapshot)
+// @route POST /api/canvas/:boardId/versions  ("Save version" button)
+// The body carries only an optional label: the snapshot is built server-side
+// from the board's own rows. See services/versionService.js.
 export const createVersion = asyncHandler(async (req, res) => {
-  const { snapshot, label } = req.body;
-  const version = await Version.create({
-    board: req.params.boardId,
-    snapshot,
-    label: label || '',
-    createdBy: req.user._id,
-  });
-  // Keep only the most recent 50 versions per board to bound storage growth
-  const count = await Version.countDocuments({ board: req.params.boardId });
-  if (count > 50) {
-    const oldest = await Version.find({ board: req.params.boardId })
-      .sort({ createdAt: 1 })
-      .limit(count - 50);
-    await Version.deleteMany({ _id: { $in: oldest.map((v) => v._id) } });
-  }
+  const version = await captureVersion(req.params.boardId, req.user._id, req.body.label || '');
+  await version.populate('createdBy', 'name');
   res.status(201).json({ version });
 });
 
@@ -58,22 +49,50 @@ export const createVersion = asyncHandler(async (req, res) => {
 export const listVersions = asyncHandler(async (req, res) => {
   const versions = await Version.find({ board: req.params.boardId })
     .select('-snapshot')
+    .populate('createdBy', 'name')
     .sort({ createdAt: -1 });
   res.json({ versions });
 });
 
 // @route POST /api/canvas/:boardId/versions/:versionId/restore
 export const restoreVersion = asyncHandler(async (req, res) => {
-  const version = await Version.findById(req.params.versionId);
+  const boardId = req.params.boardId;
+  if (!mongoose.isValidObjectId(req.params.versionId)) {
+    return res.status(404).json({ message: 'Version not found' });
+  }
+
+  // Scoped to the board on purpose: requireBoardAccess only proves you may
+  // write to *this* board, so an unscoped lookup would let a version id pull
+  // another board's canvas into it.
+  const version = await Version.findOne({ _id: req.params.versionId, board: boardId });
   if (!version) return res.status(404).json({ message: 'Version not found' });
 
-  // Wipe current objects and replace with the snapshot's object list.
-  await CanvasObject.deleteMany({ board: req.params.boardId });
-  const objects = version.snapshot?.objects || [];
-  if (objects.length) {
-    await CanvasObject.insertMany(
-      objects.map((o) => ({ ...o, board: req.params.boardId, createdBy: req.user._id }))
-    );
-  }
+  // Wipe current objects and replace with the snapshot's object list. Fields
+  // are mapped explicitly rather than spread, so nothing that happens to be in
+  // an old snapshot (a stale _id, timestamps) is written back as-is.
+  await CanvasObject.deleteMany({ board: boardId });
+  const snapshot = version.snapshot?.objects || [];
+  const objects = snapshot.length
+    ? await CanvasObject.insertMany(
+        snapshot.map(({ objectId, type, data, zIndex }) => ({
+          board: boardId,
+          objectId,
+          type,
+          data,
+          zIndex: zIndex ?? 0,
+          createdBy: req.user._id,
+        }))
+      )
+    : [];
+
+  // Everyone else in the room is holding a canvas that no longer exists. Until
+  // Sprint 4 they kept it until they happened to reload.
+  req.app.get('io')?.to(String(boardId)).emit('board:restored', {
+    boardId: String(boardId),
+    versionId: String(version._id),
+    by: String(req.user._id),
+    objects,
+  });
+
   res.json({ message: 'Version restored', objects });
 });

@@ -71,6 +71,9 @@ app.use(errorHandler);
 // ---- Socket.io ----
 const io = new Server(server, { cors: { origin: CLIENT_URL, credentials: true } });
 initSocket(io);
+// So REST handlers can broadcast into a board room -- restoreVersion has to
+// tell everyone still looking at the old canvas that it is gone.
+app.set('io', io);
 
 const PORT = process.env.PORT || 5000;
 

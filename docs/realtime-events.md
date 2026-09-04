@@ -67,7 +67,8 @@ per-process — a multi-instance deployment needs the Redis adapter for this to 
 | `object:added` | the saved `CanvasObject` doc | `CanvasBoard` |
 | `object:updated` | `{ objectId, data, by }` | `CanvasBoard` |
 | `object:deleted` | `{ objectId, by }` | `CanvasBoard` |
-| `object:reordered` | `{ objectId, zIndex }` | *nothing yet* |
+| `object:reordered` | `{ objectId, zIndex }` | `CanvasBoard` |
+| `board:restored` | `{ boardId, versionId, by, objects }` — emitted by `POST /versions/:id/restore`, not by a socket event | `BoardEditor` (reloads the canvas; skips its own echo by comparing `by`) |
 | `draw:stream` | `{ strokeId, points, by }` | *nothing yet* |
 | `text:edit` | `{ objectId, text, by }` | *nothing yet* |
 | `comment:new` | the comment | `CommentsPanel` |

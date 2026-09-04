@@ -1,6 +1,6 @@
 # Implementation status
 
-An honest inventory as of commit `92ceeea`. "Working" means the full path exists —
+An honest inventory, current through Sprint 4. "Working" means the full path exists —
 UI → API/socket → database — not just that a schema field or endpoint is present.
 
 ## Working end to end
@@ -34,6 +34,13 @@ UI → API/socket → database — not just that a schema field or endpoint is p
 - Presence join/leave and an "N online" counter
 - Object add / update / delete broadcast and persisted in the same handler
 
+**Version history**
+- "Save version" button in the history panel, with a label and the author's name
+- An automatic snapshot every 50 object mutations, counted on the server so one board
+  produces one timeline no matter how many people are editing
+- Restore replaces the board and is broadcast to everyone still in the room
+- Pruned to the 50 most recent versions per board
+
 **Comments**
 - List, post, live append to everyone in the room, resolve/unresolve toggle
 
@@ -54,7 +61,6 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
 | Image upload | `POST /api/uploads/image` (Multer, 10 MB, image MIME allowlist) + static `/uploads` | no image tool in the toolbar, no upload control |
 | Board sharing / invites | `POST /api/boards/:id/invite`, full `BoardMember` role model, `requireBoardAccess` | no share dialog; the `shared` dashboard filter can only ever show boards someone added you to via a direct API call |
 | Notifications | `GET /api/notifications`, `PUT /:id/read`; rows written on invite and on mention | no bell/inbox UI |
-| Version snapshots | `POST /api/canvas/:id/versions` (+50-version pruning) | **never called** — so the history panel is always empty and restore has nothing to restore. This is the biggest single gap |
 | Comment mentions | `mentions[]` on the model, notification fan-out on create | no `@` autocomplete; the panel always posts an empty `mentions` array |
 | Comment pinning / threads | `x`, `y`, `parentComment` on the model | panel always posts `x: 0, y: 0` and renders a flat list |
 | In-progress stroke streaming | `draw:stream` relay | nothing emits or listens; remote users only see a stroke once it is finished |
@@ -95,8 +101,9 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
    edit. `object:add` on the server is now an upsert, since undo/redo replays adds.
 5. Remote cursors use **viewport** coordinates (`clientX/Y`), not canvas coordinates, so
    they point at the wrong place whenever two people are panned or zoomed differently.
-6. `restoreVersion` does not broadcast — other people in the room keep the old canvas until
-   they reload.
+6. ~~`restoreVersion` does not broadcast.~~ **Fixed in Sprint 4** — it emits `board:restored`
+   into the board room. Restore was also unscoped: any version id could be restored into any
+   board you could write to. It is now looked up as `{ _id, board }`.
 7. Highlighter transparency does not apply: the code sets `opacity` on a Fabric 6
    `PencilBrush`, which has no such property. Highlighter is just a wider opaque stroke.
 8. `Board.isFavorite` is a property of the board, not of the (user, board) pair — once board
@@ -128,8 +135,10 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
 
 1. ~~Add a board-access check to `board:join` and the comment resolve/delete routes.~~
    Done in Sprint 1.
-2. Actually create versions — call `POST /canvas/:id/versions` on an interval (say every
-   Nth auto-save) or from an explicit "Save version" button, so history stops being empty.
+2. ~~Actually create versions — call `POST /canvas/:id/versions` on an interval (say every
+   Nth auto-save) or from an explicit "Save version" button, so history stops being empty.~~
+   Done in Sprint 4. There is no auto-save left to hang it on, so the automatic trigger
+   counts object mutations on the server instead.
 3. ~~Make undo/redo emit: diff the restored snapshot against the live canvas and emit the
    corresponding `object:add` / `object:delete` / `object:update` events.~~ Done in Sprint 3.
 4. Convert cursor coordinates to canvas space before emitting.

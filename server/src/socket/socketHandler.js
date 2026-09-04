@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import CanvasObject from '../models/CanvasObject.js';
 import { getBoardRole, hasRole } from '../middleware/boardAccess.js';
+import { captureVersion } from '../services/versionService.js';
 
 // In-memory presence map: boardId -> Map(socketId -> { userId, name, color, cursor })
 // Fine for a single-instance deployment; for horizontal scaling you'd move
@@ -11,6 +12,31 @@ const presence = new Map();
 function getRoomPresence(boardId) {
   if (!presence.has(boardId)) presence.set(boardId, new Map());
   return presence.get(boardId);
+}
+
+// One version every N object mutations, so the timeline fills up without anyone
+// remembering to press save. Counted here rather than in the browser because
+// five people on one board should produce one timeline, not five. Sprint 2
+// removed the 10s auto-save this was originally meant to ride on; mutations are
+// the replacement trigger. Overridable so the e2e suite does not have to make
+// fifty edits to see one version.
+const AUTO_VERSION_EVERY = Number(process.env.AUTO_VERSION_EVERY) || 50;
+const mutationCounts = new Map();
+
+async function countMutation(boardId, userId) {
+  const next = (mutationCounts.get(boardId) || 0) + 1;
+  if (next < AUTO_VERSION_EVERY) {
+    mutationCounts.set(boardId, next);
+    return;
+  }
+  mutationCounts.set(boardId, 0);
+  try {
+    await captureVersion(boardId, userId);
+  } catch (err) {
+    // A failed snapshot must never take the mutation down with it -- the object
+    // write it followed has already been persisted and broadcast.
+    console.error('[versions] auto-capture failed:', err.message);
+  }
 }
 
 export function initSocket(io) {
@@ -134,6 +160,7 @@ export function initSocket(io) {
           { new: true, upsert: true, setDefaultsOnInsert: true }
         );
         socket.to(boardId).emit('object:added', saved);
+        await countMutation(boardId, socket.user._id);
       } catch (err) {
         socket.emit('error:sync', { message: 'Failed to add object', detail: err.message });
       }
@@ -144,6 +171,7 @@ export function initSocket(io) {
       try {
         await CanvasObject.updateOne({ board: boardId, objectId }, { $set: { data } });
         socket.to(boardId).emit('object:updated', { objectId, data, by: socket.user._id });
+        await countMutation(boardId, socket.user._id);
       } catch (err) {
         socket.emit('error:sync', { message: 'Failed to update object', detail: err.message });
       }
@@ -154,6 +182,7 @@ export function initSocket(io) {
       try {
         await CanvasObject.deleteOne({ board: boardId, objectId });
         socket.to(boardId).emit('object:deleted', { objectId, by: socket.user._id });
+        await countMutation(boardId, socket.user._id);
       } catch (err) {
         socket.emit('error:sync', { message: 'Failed to delete object', detail: err.message });
       }
@@ -164,6 +193,7 @@ export function initSocket(io) {
       try {
         await CanvasObject.updateOne({ board: boardId, objectId }, { $set: { zIndex } });
         socket.to(boardId).emit('object:reordered', { objectId, zIndex });
+        await countMutation(boardId, socket.user._id);
       } catch (err) {
         socket.emit('error:sync', { message: 'Failed to reorder object', detail: err.message });
       }

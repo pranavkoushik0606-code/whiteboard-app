@@ -59,6 +59,8 @@ duplicate, delete (immediate, no confirmation). Card thumbnails are a static gra
 - header with inline-editable title (blur or Enter → `PUT /boards/:id`) and an "N online"
   count driven by `presence:sync|joined|left`
 - renders `CanvasBoard`, `PresenceCursors`, `Toolbar`, and the export/comments/history panels
+- listens for `board:restored` and reloads the canvas wholesale, skipping the echo of its own
+  restore (compares the payload's `by` against the current user id)
 - undo/redo buttons work by *dispatching a synthetic `keydown`* (`Ctrl+Z` / `Ctrl+Y`) on
   `window`, which the canvas's own shortcut handler picks up
 
@@ -72,7 +74,7 @@ duplicate, delete (immediate, no confirmation). Card thumbnails are a static gra
 | `Toolbar` | Floating glass bar, bottom-centre: 13 tool buttons, stroke colour, fill colour, stroke width slider (1–20), undo, redo, grid toggle, comments, history, export |
 | `PresenceCursors` | Fixed full-screen overlay (`pointer-events-none`) drawing an SVG arrow + name badge per remote socket, in that user's colour |
 | `CommentsPanel` | Right drawer: loads `GET /comments/:boardId`, appends live via `comment:new`, post box (Enter to send), per-comment resolve toggle |
-| `VersionHistoryPanel` | Right drawer: lists versions with label + timestamp and a restore button that calls the restore endpoint and reloads the canvas |
+| `VersionHistoryPanel` | Right drawer: a name field and Save button that captures a version (the snapshot is built server-side, so nothing but the label is sent), plus a list of versions with label, timestamp, author and a restore button. Restore reloads the canvas locally and is broadcast to the rest of the room as `board:restored` |
 | `ExportMenu` | Small popover: PNG / JPEG / JSON |
 | `ProtectedRoute` | Waits on `loading`, then redirects to `/login` if there's no user |
 

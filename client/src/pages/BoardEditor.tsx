@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Users } from 'lucide-react';
 import { api } from '../lib/api';
 import { useSocket } from '../hooks/useSocket';
+import { useAuthStore } from '../store/useAuthStore';
 import { useCanvasStore } from '../store/useCanvasStore';
 import CanvasBoard, { CanvasBoardHandle, exportPNG, exportJPEG, exportJSON } from '../canvas/CanvasBoard';
 import Toolbar from '../components/Toolbar';
@@ -26,6 +27,7 @@ export default function BoardEditor() {
   const [showHistory, setShowHistory] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const { gridVisible } = useCanvasStore();
+  const currentUserId = useAuthStore((s) => s.user?.id);
 
   useEffect(() => {
     if (!boardId) return;
@@ -68,9 +70,25 @@ export default function BoardEditor() {
 
   const handleRestore = useCallback((restoredObjects: any[]) => {
     canvasHandleRef.current?.loadObjects(
-      restoredObjects.map((o: any) => ({ objectId: o.objectId, data: o.data }))
+      restoredObjects.map((o: any) => ({ objectId: o.objectId, data: o.data, zIndex: o.zIndex }))
     );
   }, []);
+
+  // A restore replaces the whole board for everyone, not just the person who
+  // pressed the button. They already applied it from the HTTP response, so skip
+  // the echo; everyone else finds out here instead of on their next reload.
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    const onRestored = (payload: any) => {
+      if (payload.by === currentUserId) return;
+      handleRestore(payload.objects || []);
+    };
+    socket.on('board:restored', onRestored);
+    return () => {
+      socket.off('board:restored', onRestored);
+    };
+  }, [socketRef.current, handleRestore, currentUserId]);
 
   if (!board) {
     return <div className="h-screen flex items-center justify-center">Loading board…</div>;

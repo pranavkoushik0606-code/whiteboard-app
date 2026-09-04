@@ -44,6 +44,9 @@ export default async function globalSetup() {
       JWT_SECRET,
       JWT_EXPIRES_IN: '1d',
       CLIENT_URL,
+      // Production takes an automatic version every 50 object mutations. Five
+      // keeps the test that proves it exists down to five drags.
+      AUTO_VERSION_EVERY: '5',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

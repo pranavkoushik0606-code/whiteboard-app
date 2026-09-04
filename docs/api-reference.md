@@ -91,14 +91,23 @@ Tokens are `jwt.sign({ id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN || '7d' })`
 | GET | `/:boardId/objects` | viewer | — | `{ objects }` |
 | POST | `/:boardId/objects/bulk` | editor | `{ objects: [{ objectId, type, data, zIndex }] }` | `{ message }` |
 | DELETE | `/:boardId/objects` | editor | — | `{ message }` |
-| POST | `/:boardId/versions` | editor | `{ snapshot, label? }` | `201 { version }` |
+| POST | `/:boardId/versions` | editor | `{ label? }` | `201 { version }` |
 | GET | `/:boardId/versions` | viewer | — | `{ versions }` (no `snapshot`) |
 | POST | `/:boardId/versions/:versionId/restore` | editor | — | `{ message, objects }` |
 
 - **objects/bulk** — a `bulkWrite` of upserts keyed on `{ board, objectId }`. Reserved for
   JSON import; **the client no longer calls it**. It was the 10-second auto-save until
   Sprint 2 removed that. Idempotent, and it never deletes.
-- **versions (POST)** — after inserting, prunes to the 50 newest versions for that board.
+- **versions (POST)** — the snapshot is built **server-side** from the board's own
+  `CanvasObject` rows; the body carries only an optional label. The client never sends a
+  canvas. After inserting, prunes to the 50 newest versions for that board.
+- **versions (POST)** is also called by the socket layer, with no HTTP request involved, once
+  every `AUTO_VERSION_EVERY` object mutations (default 50) — see `services/versionService.js`.
+- **restore** — looks the version up scoped to `{ _id, board }`: board access proves you may
+  write to *this* board, so an unscoped lookup would let a version id pull another board's
+  canvas into it. A malformed or foreign version id is a `404`. On success it broadcasts
+  `board:restored` into the board room, so other people do not keep editing a canvas that no
+  longer exists.
   **No client code calls this**, so the version timeline stays empty in practice — see
   [implementation-status.md](implementation-status.md).
 - **restore** — destructive: deletes every CanvasObject for the board, then inserts
