@@ -103,12 +103,23 @@ A `forwardRef` component exposing `{ getCanvas(), loadObjects(objects) }` via
    `Ctrl+Z` undo, `Ctrl+Y` / `Ctrl+Shift+Z` redo, `Ctrl+D` duplicate at +20/+20 offset,
    `]` bring to front, `[` send to back.
 
-**History** is a plain snapshot stack: every mutation pushes a
-`JSON.stringify(canvas.toJSON(['objectId']))`, truncating any redo tail, capped at 100
-entries. Undo/redo `loadFromJSON` the neighbouring entry. It is **local-only** — undo does
-not emit anything, so neither other clients nor the database see it. Since Sprint 2 removed
-the bulk auto-save there is no longer anything that eventually writes an undone state back,
-which is what Sprint 3 fixes.
+**History** is a snapshot stack: every mutation pushes `serializeCanvas(canvas)` —
+`canvas.toObject(['objectId', 'zIndex'])` — truncating any redo tail, capped at 100 entries.
+The baseline snapshot is taken *after* the board's saved objects finish loading, so it
+describes the board as you found it rather than an empty canvas.
+
+Undo/redo `loadFromJSON` the neighbouring entry **and broadcast the difference**: the two
+snapshots are diffed by `objectId` and the result emitted as `object:add` / `object:update` /
+`object:delete` / `object:reorder`. Undo therefore reaches the database and the other people
+on the board, which it never did before Sprint 3.
+
+Two supporting rules make that safe:
+- Every incoming remote event **rebases the whole stack** (`rebaseHistory`), so a snapshot
+  that predates someone else's edit can't reach back and undo their work.
+- Custom props must be named in every serialization call. Fabric 6's `canvas.toJSON()`
+  takes **no arguments** — only `toObject(props)` does — so the old
+  `canvas.toJSON(['objectId'])` produced anonymous snapshots. Anything that serializes the
+  canvas goes through `serializeCanvas` now.
 
 **Exported helpers** (used by `BoardEditor`):
 - `exportPNG` / `exportJPEG` — `toDataURL` at `multiplier: 2` (JPEG at quality 0.9),

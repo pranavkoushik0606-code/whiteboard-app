@@ -83,7 +83,7 @@ mousedown size. **A freshly drawn shape was unselectable until a reload.** One-l
 write an undone canvas back; nothing does now. That is Sprint 3, and it is the reason
 Sprint 3 follows this one.
 
-### Sprint 3 — Make undo honest · 50 min
+### Sprint 3 — Make undo honest · 50 min · ✅ DONE
 
 - Diff the restored history snapshot against the live canvas, emit the corresponding
   `object:add` / `object:delete` / `object:update`
@@ -91,6 +91,37 @@ Sprint 3 follows this one.
 *Fixes the resurrect bug: today undo removes an object from your screen but leaves it in
 Mongo. Must come after Sprint 2 — while the bulk upsert still runs it fights the diff.*
 **Skip this sprint if you know you're doing Yjs** — `Y.UndoManager` replaces it wholesale.
+
+**What actually shipped.** The diff itself was the easy half. Three things had to be fixed
+before it could be trusted:
+
+`canvas.toJSON(['objectId'])` never included `objectId`. Fabric 6's `toJSON()` takes **no
+arguments** — only `toObject(props)` does. Every history snapshot the app has ever taken
+was anonymous, which is invisible while undo only reloads them blindly and fatal the
+moment you try to diff two. All serialization now goes through one `serializeCanvas()`
+using `toObject(['objectId', 'zIndex'])`. `exportJSON` was silently losing objectIds for
+the same reason.
+
+The baseline snapshot was taken *before* the saved objects finished loading, so it was
+always an empty canvas. Under the old local-only undo that was harmless. With a broadcast
+diff, the first Ctrl+Z on any board you had just opened would have deleted **every object
+on it**. Initial load is now awaited before the baseline is recorded.
+
+Snapshots only described your own edits, so undoing past someone else's incoming change
+would diff it away and delete their object. Each remote event now rebases the whole stack.
+
+Also: `object:add` on the server is an upsert, because undo/redo replays an add for an
+object that may or may not still have a row, and `{ board, objectId }` is uniquely indexed.
+
+Six tests in `e2e/undo.spec.ts`. Verified against three separate mutations — dropping the
+diff emission fails all six, an empty baseline fails only the baseline test, and disabling
+the rebase fails only the remote-add test. The redo test passed the first mutation until it
+was strengthened to check the database between the undo and the redo; a no-op undo *and* a
+no-op redo leave the canvas where it started, which is exactly the state a weak test can't
+tell from a working one.
+
+This closes the Sprint 2 regression: undo is now more durable than it was before either
+sprint, not less.
 
 ### Sprint 4 — Version history stops being a lie · 40 min
 

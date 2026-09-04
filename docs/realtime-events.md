@@ -48,7 +48,7 @@ per-process — a multi-instance deployment needs the Redis adapter for this to 
 | `board:join` | `{ boardId }` | Joins the room, registers presence, emits `presence:joined` to others and `presence:sync` back to the joiner |
 | `board:leave` | — | Removes presence, emits `presence:left`, leaves the room |
 | `cursor:move` | `{ boardId, x, y }` | Updates the stored cursor, broadcasts `cursor:update` |
-| `object:add` | `{ boardId, object: { objectId, type, data, zIndex? } }` | `CanvasObject.create(...)` then broadcasts `object:added` with the saved doc |
+| `object:add` | `{ boardId, object: { objectId, type, data, zIndex? } }` | Upserts on `{ board, objectId }` then broadcasts `object:added` with the saved doc. Upsert rather than create because undo/redo replays an add for an object that may or may not still have a row |
 | `object:update` | `{ boardId, objectId, data }` | `updateOne` `$set: { data }` then broadcasts `object:updated` |
 | `object:delete` | `{ boardId, objectId }` | `deleteOne` then broadcasts `object:deleted` |
 | `object:reorder` | `{ boardId, objectId, zIndex }` | `updateOne` `$set: { zIndex }` then broadcasts `object:reordered` |
@@ -82,6 +82,11 @@ the sender already applied the change locally.
 `object:updated` it sets the flag, mutates the canvas, then clears it; the local
 `object:modified` handler bails out while the flag is set, so a remote change never
 re-broadcasts. Undo/redo (`loadFromJSON`) sets the same flag for the same reason.
+
+Undo/redo does emit — just not through `object:modified`. It diffs the snapshot it is
+leaving against the one it is restoring and emits the difference explicitly, after the
+canvas has been rebuilt and the flag cleared. Incoming events also rebase the history
+stack so an undo can never reach back over someone else's edit.
 
 ## Throttling
 

@@ -25,7 +25,7 @@ UI → API/socket → database — not just that a schema field or endpoint is p
 - Move / resize / rotate / multi-select via Fabric controls
 - Shortcuts: `Delete`, `Ctrl+Z`, `Ctrl+Y` / `Ctrl+Shift+Z`, `Ctrl+D`, `[`, `]`
 - Grid toggle, stroke colour, fill colour, stroke width (1–20)
-- Undo/redo over a 100-entry local snapshot stack
+- Undo/redo over a 100-entry snapshot stack, broadcast to the room and persisted
 - Every mutation persisted individually over its own socket event; full rehydration on reload
 
 **Collaboration**
@@ -85,11 +85,14 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
    suite has no way to mint a valid reset token without reading the Ethereal inbox.
 
 **Correctness**
-4. **Undo is local-only.** It emits nothing, so an undo never reaches the database or the
-   other people on the board — undo a creation and the object is still in Mongo, undo a
-   move and the moved position is still what reloads. Before Sprint 2 the bulk auto-save
-   masked half of this by eventually re-writing whatever was on the canvas. Sprint 3 makes
-   undo emit.
+4. ~~**Undo is local-only.**~~ **Fixed in Sprint 3** — undo/redo diff the two history
+   snapshots and emit the difference, so they reach both the database and the other people
+   on the board. Fixing it turned up three related defects, all also fixed: history
+   snapshots carried no `objectId` at all (Fabric 6's `canvas.toJSON()` ignores the
+   properties argument — only `toObject(props)` accepts one); the baseline snapshot was
+   taken before the board's saved objects had loaded, so it was an empty canvas; and
+   snapshots ignored incoming remote changes, so undo could reach back over someone else's
+   edit. `object:add` on the server is now an upsert, since undo/redo replays adds.
 5. Remote cursors use **viewport** coordinates (`clientX/Y`), not canvas coordinates, so
    they point at the wrong place whenever two people are panned or zoomed differently.
 6. `restoreVersion` does not broadcast — other people in the room keep the old canvas until
@@ -127,8 +130,8 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
    Done in Sprint 1.
 2. Actually create versions — call `POST /canvas/:id/versions` on an interval (say every
    Nth auto-save) or from an explicit "Save version" button, so history stops being empty.
-3. Make undo/redo emit: diff the restored snapshot against the live canvas and emit the
-   corresponding `object:add` / `object:delete` / `object:update` events.
+3. ~~Make undo/redo emit: diff the restored snapshot against the live canvas and emit the
+   corresponding `object:add` / `object:delete` / `object:update` events.~~ Done in Sprint 3.
 4. Convert cursor coordinates to canvas space before emitting.
 5. Build the share dialog on top of the existing invite endpoint, and a notification bell on
    top of the existing notifications endpoint — both are pure frontend work.

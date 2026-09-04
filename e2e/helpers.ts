@@ -56,10 +56,14 @@ export async function openBoard(browser: Browser, as: TestUser, boardId: string)
   const page = await context.newPage();
   await page.goto(`/board/${boardId}`);
 
-  // `__fabricCanvas` is set in CanvasBoard's init effect (dev builds only).
-  await page.waitForFunction(() => Boolean((window as any).__fabricCanvas), null, {
-    timeout: 30_000,
-  });
+  // Both handles are set in CanvasBoard's init effect (dev builds only).
+  // `__canvasReady` flips only once the saved objects have been enlivened and
+  // the history baseline taken — waiting on the canvas alone races the load.
+  await page.waitForFunction(
+    () => Boolean((window as any).__fabricCanvas) && (window as any).__canvasReady === true,
+    null,
+    { timeout: 30_000 }
+  );
   return page;
 }
 

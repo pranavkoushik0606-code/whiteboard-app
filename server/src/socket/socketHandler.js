@@ -117,14 +117,22 @@ export function initSocket(io) {
     socket.on('object:add', async ({ boardId, object }) => {
       if (!authorized(boardId, 'editor')) return;
       try {
-        const saved = await CanvasObject.create({
-          board: boardId,
-          objectId: object.objectId,
-          type: object.type,
-          data: object.data,
-          zIndex: object.zIndex || 0,
-          createdBy: socket.user._id,
-        });
+        // Upsert rather than create: undo/redo replays an add for an object
+        // that may or may not still have a row (undo a delete, then redo, then
+        // undo again). { board, objectId } is uniquely indexed, so a plain
+        // create would throw a duplicate-key error on the second pass.
+        const saved = await CanvasObject.findOneAndUpdate(
+          { board: boardId, objectId: object.objectId },
+          {
+            $set: {
+              type: object.type,
+              data: object.data,
+              zIndex: object.zIndex || 0,
+            },
+            $setOnInsert: { createdBy: socket.user._id },
+          },
+          { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
         socket.to(boardId).emit('object:added', saved);
       } catch (err) {
         socket.emit('error:sync', { message: 'Failed to add object', detail: err.message });

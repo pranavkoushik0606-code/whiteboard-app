@@ -16,6 +16,33 @@ export interface CanvasBoardHandle {
   loadObjects: (objects: any[]) => void;
 }
 
+// Custom properties Fabric knows nothing about but the whole sync path is keyed
+// on. They have to be named in every serialization call or they are silently
+// dropped — see serializeCanvas for the trap that hid in `toJSON`.
+const SYNC_PROPS = ['objectId', 'zIndex'];
+
+interface SnapshotObject {
+  objectId?: string;
+  type?: string;
+  zIndex?: number;
+  [key: string]: any;
+}
+interface Snapshot {
+  objects: SnapshotObject[];
+  [key: string]: any;
+}
+type HistoryRef = React.MutableRefObject<{ stack: Snapshot[]; index: number }>;
+
+/**
+ * Fabric 6's `canvas.toJSON()` takes no arguments — only `toObject(props)`
+ * does. `canvas.toJSON(['objectId'])` therefore returned objects with no
+ * objectId at all, which is why history snapshots could only ever be reloaded
+ * blindly and never diffed against anything.
+ */
+function serializeCanvas(canvas: fabric.Canvas): Snapshot {
+  return canvas.toObject(SYNC_PROPS) as Snapshot;
+}
+
 // Every Fabric object we create gets a stable `objectId` in its custom data
 // so updates can be matched across clients regardless of local array index.
 function withMeta(obj: fabric.Object, objectId = uuid()) {
@@ -25,7 +52,7 @@ function withMeta(obj: fabric.Object, objectId = uuid()) {
 
 // Stacking order is mirrored onto each object as `zIndex` and sent with every
 // add/reorder, because the socket path is now the only thing that writes to the
-// database -- nothing else recomputes it from array position afterwards.
+// database — nothing else recomputes it from array position afterwards.
 const zOf = (obj: any): number => (typeof obj.zIndex === 'number' ? obj.zIndex : 0);
 
 function topZ(canvas: fabric.Canvas) {
@@ -45,7 +72,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const isRemoteUpdate = useRef(false);
-  const historyRef = useRef<{ stack: string[]; index: number }>({ stack: [], index: -1 });
+  const historyRef: HistoryRef = useRef<{ stack: Snapshot[]; index: number }>({ stack: [], index: -1 });
   const { tool, strokeColor, fillColor, strokeWidth } = useCanvasStore();
   const drawingShapeRef = useRef<fabric.Object | null>(null);
   const startPointRef = useRef<{ x: number; y: number } | null>(null);
@@ -56,13 +83,9 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
       const canvas = fabricRef.current;
       if (!canvas) return;
       canvas.clear();
-      for (const o of objects) {
-        const [enlivened] = await fabric.util.enlivenObjects([o.data]);
-        withMeta(enlivened as fabric.Object, o.objectId);
-        (enlivened as any).zIndex = o.zIndex ?? 0;
-        canvas.add(enlivened as fabric.Object);
-      }
-      canvas.renderAll();
+      await hydrate(canvas, objects);
+      // A wholesale replacement invalidates every snapshot taken before it.
+      resetHistory(canvas, historyRef);
     },
   }));
 
@@ -77,21 +100,23 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     });
     fabricRef.current = canvas;
 
-    // Dev-only handle so the e2e suite can assert on canvas contents. Fabric
+    // Dev-only handles so the e2e suite can assert on canvas contents. Fabric
     // draws to a bitmap, so there are no per-object DOM nodes to query instead.
-    if (import.meta.env.DEV) (window as any).__fabricCanvas = canvas;
+    if (import.meta.env.DEV) {
+      (window as any).__fabricCanvas = canvas;
+      (window as any).__canvasReady = false;
+    }
 
-    // Rehydrate saved objects
-    initialObjects.forEach((o) => {
-      fabric.util.enlivenObjects([o.data]).then(([enlivened]) => {
-        withMeta(enlivened as fabric.Object, o.objectId);
-        (enlivened as any).zIndex = o.zIndex ?? 0;
-        canvas.add(enlivened as fabric.Object);
-        canvas.renderAll();
-      });
-    });
-
-    pushHistory(canvas, historyRef);
+    let disposed = false;
+    (async () => {
+      await hydrate(canvas, initialObjects);
+      if (disposed) return;
+      // The baseline snapshot has to contain what is already on the board.
+      // Undo emits the diff between two snapshots now, so an empty baseline
+      // would delete every pre-existing object on the first Ctrl+Z.
+      resetHistory(canvas, historyRef);
+      if (import.meta.env.DEV) (window as any).__canvasReady = true;
+    })();
 
     const handleResize = () => {
       canvas.setDimensions({ width: window.innerWidth, height: window.innerHeight - 64 });
@@ -99,6 +124,8 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     window.addEventListener('resize', handleResize);
 
     return () => {
+      disposed = true;
+      if (import.meta.env.DEV) (window as any).__canvasReady = false;
       window.removeEventListener('resize', handleResize);
       canvas.dispose();
     };
@@ -305,22 +332,31 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     };
   }, []);
 
-  const emitAdd = useCallback(
-    (obj: fabric.Object) => {
-      const canvas = fabricRef.current;
-      const zIndex = canvas ? topZ(canvas) + 1 : 0;
-      (obj as any).zIndex = zIndex;
+  // ---- Emitters ----
+  // The history path replays plain serialized objects rather than live Fabric
+  // ones, so the add emitter is split: emitAddData takes what goes on the wire.
+  const emitAddData = useCallback(
+    (data: SnapshotObject) => {
       socket?.emit('object:add', {
         boardId,
         object: {
-          objectId: (obj as any).objectId,
-          type: obj.type,
-          data: obj.toObject(['objectId']),
-          zIndex,
+          objectId: data.objectId,
+          type: data.type,
+          data,
+          zIndex: data.zIndex ?? 0,
         },
       });
     },
     [socket, boardId]
+  );
+
+  const emitAdd = useCallback(
+    (obj: fabric.Object) => {
+      const canvas = fabricRef.current;
+      (obj as any).zIndex = canvas ? topZ(canvas) + 1 : 0;
+      emitAddData(obj.toObject(SYNC_PROPS));
+    },
+    [emitAddData]
   );
 
   // `[` and `]` only ever move an object to one extreme, so we can hand it a
@@ -337,7 +373,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
       socket?.emit('object:update', {
         boardId,
         objectId: (obj as any).objectId,
-        data: obj.toObject(['objectId']),
+        data: obj.toObject(SYNC_PROPS),
       });
     },
     [socket, boardId]
@@ -349,6 +385,55 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     [socket, boardId]
   );
 
+  // ---- Undo / redo ----
+  /**
+   * Moves the history cursor and tells everyone else what changed. Undo used to
+   * be purely local: it took the object off your screen and left the row in
+   * Mongo, so the next reload resurrected it. The canvas is still restored with
+   * loadFromJSON — the new part is diffing the two snapshots and emitting the
+   * add/update/delete/reorder that turns one into the other.
+   */
+  const applyHistory = useCallback(
+    async (nextIndex: number) => {
+      const canvas = fabricRef.current;
+      const h = historyRef.current;
+      if (!canvas || nextIndex < 0 || nextIndex >= h.stack.length || nextIndex === h.index) return;
+
+      const from = h.stack[h.index];
+      const to = h.stack[nextIndex];
+      h.index = nextIndex;
+
+      isRemoteUpdate.current = true;
+      await canvas.loadFromJSON(structuredClone(to));
+      // enlivenObjects gives no guarantee about carrying custom props through,
+      // and everything downstream is keyed on objectId. loadFromJSON preserves
+      // the snapshot's order, so re-stamp by index rather than trusting it.
+      canvas.getObjects().forEach((obj, i) => {
+        const src = to.objects?.[i];
+        if (!src) return;
+        (obj as any).objectId = src.objectId;
+        (obj as any).zIndex = src.zIndex ?? 0;
+        obj.setCoords();
+      });
+      canvas.renderAll();
+      isRemoteUpdate.current = false;
+
+      const diff = diffSnapshots(from, to);
+      diff.deleted.forEach((objectId) => socket?.emit('object:delete', { boardId, objectId }));
+      diff.added.forEach(emitAddData);
+      diff.updated.forEach((data) =>
+        socket?.emit('object:update', { boardId, objectId: data.objectId, data })
+      );
+      diff.reordered.forEach(({ objectId, zIndex }) =>
+        socket?.emit('object:reorder', { boardId, objectId, zIndex })
+      );
+    },
+    [socket, boardId, emitAddData]
+  );
+
+  const undo = useCallback(() => applyHistory(historyRef.current.index - 1), [applyHistory]);
+  const redo = useCallback(() => applyHistory(historyRef.current.index + 1), [applyHistory]);
+
   // ---- Remote events ----
   useEffect(() => {
     if (!socket) return;
@@ -356,6 +441,16 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     if (!canvas) return;
 
     const onAdded = async (payload: any) => {
+      // Rebase first: the snapshots have to describe the shared canvas, not
+      // just this client's own edits. Undoing past a remote add would
+      // otherwise diff it away and delete someone else's object.
+      rebaseHistory(historyRef, (objects) =>
+        objects.some((o) => o.objectId === payload.objectId)
+          ? objects
+          : [...objects, { ...payload.data, objectId: payload.objectId, zIndex: payload.zIndex ?? 0 }]
+      );
+
+      if (canvas.getObjects().some((o: any) => o.objectId === payload.objectId)) return;
       const [obj] = await fabric.util.enlivenObjects([payload.data]);
       withMeta(obj as fabric.Object, payload.objectId);
       (obj as any).zIndex = payload.zIndex ?? 0;
@@ -366,6 +461,12 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     };
 
     const onUpdated = (payload: any) => {
+      rebaseHistory(historyRef, (objects) =>
+        objects.map((o) =>
+          o.objectId === payload.objectId ? { ...payload.data, objectId: payload.objectId } : o
+        )
+      );
+
       const target = canvas.getObjects().find((o: any) => o.objectId === payload.objectId);
       if (!target) return;
       isRemoteUpdate.current = true;
@@ -376,11 +477,17 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     };
 
     const onDeleted = (payload: any) => {
+      rebaseHistory(historyRef, (objects) => objects.filter((o) => o.objectId !== payload.objectId));
+
       const target = canvas.getObjects().find((o: any) => o.objectId === payload.objectId);
       if (target) canvas.remove(target);
     };
 
     const onReordered = (payload: any) => {
+      rebaseHistory(historyRef, (objects) =>
+        objects.map((o) => (o.objectId === payload.objectId ? { ...o, zIndex: payload.zIndex } : o))
+      );
+
       const target = canvas.getObjects().find((o: any) => o.objectId === payload.objectId);
       if (!target) return;
       (target as any).zIndex = payload.zIndex;
@@ -427,7 +534,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') spaceHeld = false;
     };
-    const onMouseDown = (opt: any) => {
+    const onMouseDown = () => {
       if (spaceHeld) {
         isPanning = true;
         canvas.selection = false;
@@ -477,12 +584,12 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
         canvas.remove(...activeObjects);
         canvas.discardActiveObject();
         pushHistory(canvas, historyRef);
-      } else if (meta && e.key === 'z') {
+      } else if (meta && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        undo(canvas, historyRef, isRemoteUpdate);
-      } else if (meta && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
+        undo();
+      } else if (meta && (e.key === 'y' || ((e.key === 'z' || e.key === 'Z') && e.shiftKey))) {
         e.preventDefault();
-        redo(canvas, historyRef, isRemoteUpdate);
+        redo();
       } else if (meta && e.key === 'd' && active) {
         e.preventDefault();
         active.clone().then((cloned: fabric.Object) => {
@@ -505,7 +612,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [emitAdd, emitDelete, emitReorder]);
+  }, [emitAdd, emitDelete, emitReorder, undo, redo]);
 
   return (
     <div className="flex-1 overflow-hidden relative bg-neutral-50 dark:bg-neutral-900">
@@ -517,6 +624,21 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
 export default CanvasBoard;
 
 // ---- Helpers ----
+
+/**
+ * Enlivens saved objects in one call so they keep the order the API sorted them
+ * into (zIndex ascending), instead of racing one promise per object.
+ */
+async function hydrate(canvas: fabric.Canvas, saved: any[]) {
+  if (!saved.length) return;
+  const enlivened = await fabric.util.enlivenObjects(saved.map((o) => o.data));
+  enlivened.forEach((obj, i) => {
+    withMeta(obj as fabric.Object, saved[i].objectId);
+    (obj as any).zIndex = saved[i].zIndex ?? 0;
+    canvas.add(obj as fabric.Object);
+  });
+  canvas.renderAll();
+}
 
 function makeStickyNote(x: number, y: number) {
   const group = new fabric.Group(
@@ -556,11 +678,10 @@ function makeStar(x: number, y: number, stroke: string, fill: string, strokeWidt
   return new fabric.Polygon(points, { left: x, top: y, stroke, fill, strokeWidth });
 }
 
-function pushHistory(canvas: fabric.Canvas, historyRef: React.MutableRefObject<{ stack: string[]; index: number }>) {
-  const json = JSON.stringify((canvas.toJSON as any)(['objectId']));
+function pushHistory(canvas: fabric.Canvas, historyRef: HistoryRef) {
   const h = historyRef.current;
   h.stack = h.stack.slice(0, h.index + 1);
-  h.stack.push(json);
+  h.stack.push(serializeCanvas(canvas));
   h.index = h.stack.length - 1;
   if (h.stack.length > 100) {
     h.stack.shift();
@@ -568,32 +689,53 @@ function pushHistory(canvas: fabric.Canvas, historyRef: React.MutableRefObject<{
   }
 }
 
-async function undo(
-  canvas: fabric.Canvas,
-  historyRef: React.MutableRefObject<{ stack: string[]; index: number }>,
-  isRemoteUpdate: React.MutableRefObject<boolean>
-) {
-  const h = historyRef.current;
-  if (h.index <= 0) return;
-  h.index -= 1;
-  isRemoteUpdate.current = true;
-  await canvas.loadFromJSON(h.stack[h.index]);
-  canvas.renderAll();
-  isRemoteUpdate.current = false;
+/** Throws the stack away and makes the current canvas the new baseline. */
+function resetHistory(canvas: fabric.Canvas, historyRef: HistoryRef) {
+  historyRef.current.stack = [serializeCanvas(canvas)];
+  historyRef.current.index = 0;
 }
 
-async function redo(
-  canvas: fabric.Canvas,
-  historyRef: React.MutableRefObject<{ stack: string[]; index: number }>,
-  isRemoteUpdate: React.MutableRefObject<boolean>
-) {
+/**
+ * Applies a remote change to every snapshot in the stack. Undo diffs two
+ * snapshots and broadcasts the difference, so a snapshot that predates someone
+ * else's edit would otherwise reach back and undo *their* work too.
+ */
+function rebaseHistory(historyRef: HistoryRef, fn: (objects: SnapshotObject[]) => SnapshotObject[]) {
   const h = historyRef.current;
-  if (h.index >= h.stack.length - 1) return;
-  h.index += 1;
-  isRemoteUpdate.current = true;
-  await canvas.loadFromJSON(h.stack[h.index]);
-  canvas.renderAll();
-  isRemoteUpdate.current = false;
+  h.stack = h.stack.map((snapshot) => ({ ...snapshot, objects: fn(snapshot.objects ?? []) }));
+}
+
+// Both sides come out of the same serializer, so key order is stable and a
+// string compare is enough — and far cheaper than a deep walk. zIndex is
+// excluded because a stacking change travels on object:reorder instead.
+function withoutZ(obj: SnapshotObject) {
+  const copy = { ...obj };
+  delete copy.zIndex;
+  return JSON.stringify(copy);
+}
+
+function diffSnapshots(from: Snapshot, to: Snapshot) {
+  const keyed = (snapshot: Snapshot) =>
+    new Map((snapshot.objects ?? []).filter((o) => o.objectId).map((o) => [o.objectId as string, o]));
+  const before = keyed(from);
+  const after = keyed(to);
+
+  const added: SnapshotObject[] = [];
+  const updated: SnapshotObject[] = [];
+  const reordered: { objectId: string; zIndex: number }[] = [];
+
+  after.forEach((obj, objectId) => {
+    const prev = before.get(objectId);
+    if (!prev) {
+      added.push(obj);
+      return;
+    }
+    if ((prev.zIndex ?? 0) !== (obj.zIndex ?? 0)) reordered.push({ objectId, zIndex: obj.zIndex ?? 0 });
+    if (withoutZ(prev) !== withoutZ(obj)) updated.push(obj);
+  });
+
+  const deleted = Array.from(before.keys()).filter((objectId) => !after.has(objectId));
+  return { added, updated, deleted, reordered };
 }
 
 export async function exportPNG(canvas: fabric.Canvas, filename: string) {
@@ -613,7 +755,7 @@ export async function exportJPEG(canvas: fabric.Canvas, filename: string) {
 }
 
 export function exportJSON(canvas: fabric.Canvas, filename: string) {
-  const json = JSON.stringify((canvas.toJSON as any)(['objectId']), null, 2);
+  const json = JSON.stringify(serializeCanvas(canvas), null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
