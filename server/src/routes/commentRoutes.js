@@ -1,6 +1,6 @@
 import express from 'express';
 import { protect } from '../middleware/auth.js';
-import { requireBoardAccess } from '../middleware/boardAccess.js';
+import { requireBoardAccess, requireCommentAccess } from '../middleware/boardAccess.js';
 import {
   listComments,
   addComment,
@@ -13,7 +13,8 @@ router.use(protect);
 
 router.get('/:boardId', requireBoardAccess('viewer'), listComments);
 router.post('/:boardId', requireBoardAccess('editor'), addComment);
-router.put('/comment/:commentId/resolve', resolveComment);
-router.delete('/comment/:commentId', deleteComment);
+// Keyed by comment id, so access is decided by the comment's board.
+router.put('/comment/:commentId/resolve', requireCommentAccess('editor'), resolveComment);
+router.delete('/comment/:commentId', requireCommentAccess('viewer'), deleteComment);
 
 export default router;

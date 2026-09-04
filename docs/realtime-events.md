@@ -14,8 +14,24 @@ io(SOCKET_URL, { auth: { token }, transports: ['websocket'] })
 `socket.user`. Connection is rejected with `No token provided`, `User not found`, or
 `Authentication failed`.
 
-⚠ Board membership is **not** checked — `board:join` accepts any board id from any
-authenticated user. See [implementation-status.md](implementation-status.md#known-gaps--bugs).
+## Authorization
+
+A valid JWT gets you a **connection**, not a board. Every event below carries a
+client-supplied `boardId`, so each one is checked independently:
+
+- `board:join` resolves the caller's role with `getBoardRole()` — the same function
+  `requireBoardAccess` uses — and refuses with `error:auth` if they are not a member.
+  On success the role is cached on the socket.
+- Every other handler checks that cached role before acting. Mutating events
+  (`object:*`, `draw:stream`, `text:edit`, `comment:new`) require `editor`; `cursor:move`
+  requires `viewer`. A denied event emits `error:auth` and does nothing else.
+
+Roles are cached at join time rather than re-queried per event, because `cursor:move`
+alone runs ~25×/second. The trade-off: revoking someone's access takes effect on their
+next reconnect, not mid-session.
+
+`e2e/authorization.spec.ts` covers this by speaking the socket protocol directly — a
+browser would never send the payloads it tests.
 
 ## Rooms and presence
 

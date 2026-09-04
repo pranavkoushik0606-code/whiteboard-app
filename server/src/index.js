@@ -34,15 +34,22 @@ app.use(express.json({ limit: '2mb' }));
 app.use(mongoSanitize()); // strips $ and . operators from req.body/query/params to block NoSQL injection
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
+// The e2e suite signs up a fresh set of users per test and would exhaust these
+// within a run. NODE_ENV=test is set only by e2e/global-setup.ts, never by any
+// deploy config, so production and development limits are unaffected.
+const skipRateLimit = () => process.env.NODE_ENV === 'test';
+
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: skipRateLimit,
 });
 app.use('/api', apiLimiter);
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 }); // stricter on auth to slow brute force
+// stricter on auth to slow brute force
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, skip: skipRateLimit });
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/signup', authLimiter);
 

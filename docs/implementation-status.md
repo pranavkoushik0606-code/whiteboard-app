@@ -71,16 +71,19 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
 
 ## Known gaps & bugs
 
-**Security**
-1. `board:join` performs **no membership check** — any authenticated user who knows a board
-   id can join its room and receive/send every canvas mutation. The REST layer is guarded;
-   the socket layer is not. This is the most important one to fix.
-2. `PUT /api/comments/comment/:id/resolve` and `DELETE /api/comments/comment/:id` skip
-   `requireBoardAccess` — any logged-in user can resolve any comment by id. (Delete is at
-   least scoped to `author: req.user._id`.)
-3. `POST /api/auth/reset-password/:token` does not re-validate password length, so the
-   6-character minimum is only enforced by Mongoose on save, and surfaces as a generic 500
-   rather than a 400.
+**Security** — all three fixed in Sprint 1 (see [roadmap.md](roadmap.md))
+
+1. ~~`board:join` performs no membership check.~~ **Fixed.** The hole was wider than
+   originally logged: *every* socket handler took `boardId` from the client payload without
+   checking it, so `object:add` could write to any board and `draw:stream` could broadcast
+   into any room without joining at all. Every handler now checks a role cached at join
+   time; mutations require `editor`, `cursor:move` requires `viewer`.
+2. ~~Comment resolve/delete skip `requireBoardAccess`.~~ **Fixed** via a new
+   `requireCommentAccess(minRole)`, which resolves the comment's board first. Delete now
+   returns `403` for a non-author instead of a silent success.
+3. ~~`reset-password` does not re-validate password length.~~ **Fixed** — returns `400`.
+   Note this path is **not** covered by a test: the invalid-token check runs first, and the
+   suite has no way to mint a valid reset token without reading the Ethereal inbox.
 
 **Correctness**
 4. **Undo is local-only.** It neither emits socket events nor deletes from the database, and
@@ -110,17 +113,18 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
     every restart.
 
 **Tooling**
-15. `npm run lint` in `client/` is defined but **eslint is not installed and there is no
-    config**, so the script fails.
-16. No tests of any kind.
+15. ~~`npm run lint` is defined but eslint is not installed.~~ **Fixed in Sprint 0** —
+    flat config in `client/eslint.config.js`; exits 0 with 10 warnings.
+16. ~~No tests of any kind.~~ **Partly fixed in Sprint 0** — an 11-test Playwright suite
+    covers realtime sync and authorization. Still no unit or API-level tests.
 17. `jspdf` is a dependency but is never imported — there is no PDF export.
-18. `client/tsconfig.tsbuildinfo` is committed; it is a build artefact and should be
-    gitignored.
+18. ~~`client/tsconfig.tsbuildinfo` is committed.~~ **Fixed in Sprint 0** — untracked and
+    ignored.
 
 ## Suggested next steps, roughly in priority order
 
-1. Add a board-access check to `board:join` (reuse the `roleRank` logic from
-   `boardAccess.js`) and to the comment resolve/delete routes.
+1. ~~Add a board-access check to `board:join` and the comment resolve/delete routes.~~
+   Done in Sprint 1.
 2. Actually create versions — call `POST /canvas/:id/versions` on an interval (say every
    Nth auto-save) or from an explicit "Save version" button, so history stops being empty.
 3. Make undo/redo emit: diff the restored snapshot against the live canvas and emit the

@@ -75,7 +75,14 @@ export const resetPassword = asyncHandler(async (req, res) => {
   });
   if (!user) return res.status(400).json({ message: 'Token is invalid or has expired' });
 
-  user.password = req.body.password;
+  // Same rule signup enforces. Without this the only check is Mongoose's on
+  // save, which surfaces as a 500 rather than a validation error.
+  const { password } = req.body;
+  if (!password || password.length < 6) {
+    return res.status(400).json({ message: 'Password must be at least 6 characters' });
+  }
+
+  user.password = password;
   user.resetPasswordToken = undefined;
   user.resetPasswordExpires = undefined;
   await user.save();

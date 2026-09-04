@@ -16,7 +16,7 @@ feature work.
 
 Do these in order. Each depends on the ones above it.
 
-### Sprint 0 — Safety net · 75 min
+### Sprint 0 — Safety net · 75 min · ✅ DONE
 
 Nothing else in this list is safe to do without a way to see collaboration break.
 
@@ -27,7 +27,13 @@ Nothing else in this list is safe to do without a way to see collaboration break
 
 *Every later sprint touches the sync path. Without this you re-test by hand each time.*
 
-### Sprint 1 — Close the security holes · 45 min
+**What actually shipped.** Playwright with an in-memory Mongo, so the suite needs neither
+Docker nor a local mongod. Two tests in `e2e/collab.spec.ts`; verified they fail when the
+`object:added` broadcast is removed. eslint's only hard error was the comma expression at
+`CanvasBoard.tsx:116` — rewritten without changing behaviour, since the highlighter fix is
+Sprint 6.
+
+### Sprint 1 — Close the security holes · 45 min · ✅ DONE
 
 - Guard `board:join` — reuse the `roleRank` check from `middleware/boardAccess.js` — 25 min
 - Add `requireBoardAccess` to `PUT /comments/comment/:id/resolve` and `DELETE
@@ -36,6 +42,18 @@ Nothing else in this list is safe to do without a way to see collaboration break
   of 500s — 10 min
 
 *No UI change. Ships on its own.*
+
+**What actually shipped.** The socket hole was wider than logged: every handler took
+`boardId` from the client payload unchecked, so `object:add` wrote to any board and
+`draw:stream` broadcast into any room without joining. All handlers now check a role
+cached at join time. `getBoardRole()` was extracted from `requireBoardAccess` so REST and
+sockets answer the same question the same way, and a new `requireCommentAccess` covers the
+comment-id-keyed routes. Rate limiting is skipped under `NODE_ENV=test`, which only
+`e2e/global-setup.ts` sets. Nine tests added in `e2e/authorization.spec.ts`; seven of them
+fail against the pre-fix code.
+
+Note the password-length fix is **not** test-covered — the invalid-token check runs first
+and the suite cannot mint a valid reset token.
 
 ### Sprint 2 — Stop the write amplification · 35 min
 

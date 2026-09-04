@@ -38,18 +38,21 @@ export const addComment = asyncHandler(async (req, res) => {
   res.status(201).json({ comment });
 });
 
-// @route PUT /api/comments/:commentId/resolve
+// @route PUT /api/comments/comment/:commentId/resolve
+// requireCommentAccess('editor') has already loaded the comment and confirmed
+// the caller has editor rights on its board.
 export const resolveComment = asyncHandler(async (req, res) => {
-  const comment = await Comment.findByIdAndUpdate(
-    req.params.commentId,
-    { resolved: req.body.resolved ?? true },
-    { new: true }
-  );
-  res.json({ comment });
+  req.comment.resolved = req.body.resolved ?? true;
+  await req.comment.save();
+  res.json({ comment: req.comment });
 });
 
-// @route DELETE /api/comments/:commentId
+// @route DELETE /api/comments/comment/:commentId
 export const deleteComment = asyncHandler(async (req, res) => {
-  await Comment.deleteOne({ _id: req.params.commentId, author: req.user._id });
+  const isAuthor = req.comment.author.equals(req.user._id);
+  if (!isAuthor && req.boardRole !== 'owner') {
+    return res.status(403).json({ message: 'You can only delete your own comments' });
+  }
+  await req.comment.deleteOne();
   res.json({ message: 'Comment deleted' });
 });

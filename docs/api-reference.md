@@ -114,17 +114,17 @@ Tokens are `jwt.sign({ id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN || '7d' })`
 |---|---|---|---|---|
 | GET | `/:boardId` | viewer | — | `{ comments }` |
 | POST | `/:boardId` | editor | `{ text, x?, y?, mentions?, parentComment? }` | `201 { comment }` |
-| PUT | `/comment/:commentId/resolve` | ⚠ JWT only | `{ resolved? }` (default `true`) | `{ comment }` |
-| DELETE | `/comment/:commentId` | ⚠ JWT only | — | `{ message }` |
+| PUT | `/comment/:commentId/resolve` | editor | `{ resolved? }` (default `true`) | `{ comment }` |
+| DELETE | `/comment/:commentId` | viewer + author, or owner | — | `{ message }` |
 
 - `GET` returns comments sorted oldest-first with `author` populated to
   `{ name, avatarUrl, color }`.
 - `POST` fans out a `mention` Notification per entry in `mentions`.
-- `DELETE` is scoped to `{ _id, author: req.user._id }`, so you can only delete your own —
-  but it returns success either way.
-- ⚠ The two `/comment/:commentId` routes have **no board-access check** — any authenticated
-  user who knows a comment id can resolve it. Logged in
-  [implementation-status.md](implementation-status.md#known-gaps--bugs).
+- The two `/comment/:commentId` routes are keyed by comment id, not board id, so they run
+  `requireCommentAccess(minRole)` instead — it loads the comment, then applies the same
+  role check against the board the comment belongs to.
+- `DELETE` succeeds for the comment's author or the board owner; anyone else gets `403`.
+  An unknown or malformed comment id is `404`.
 
 ---
 
