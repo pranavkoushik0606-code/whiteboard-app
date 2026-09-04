@@ -55,13 +55,33 @@ fail against the pre-fix code.
 Note the password-length fix is **not** test-covered — the invalid-token check runs first
 and the suite cannot mint a valid reset token.
 
-### Sprint 2 — Stop the write amplification · 35 min
+### Sprint 2 — Stop the write amplification · 35 min · ✅ DONE
 
 - Delete the 10-second bulk auto-save interval in `BoardEditor.tsx`
 - The socket path becomes the only writer; keep `POST /objects/bulk` for JSON import only
 
 *With 5 people on a 500-object board the old interval was ~250 object-writes/second of
 pure duplication. Sprint 0's test is what tells you nothing regressed.*
+
+**What actually shipped.** Removing the interval meant the socket path had to become a
+*complete* writer, and it wasn't: `zIndex` was only ever written by the bulk save, so
+`[` / `]` would have silently stopped persisting. `object:add` now carries a `zIndex` and
+the bracket shortcuts emit `object:reorder` (with a matching remote listener, which never
+existed). Because they only ever move an object to one extreme, the sender hands it a
+zIndex outside the current range rather than renumbering every sibling.
+
+Four tests in `e2e/persistence.spec.ts` — move, delete, stacking-after-reload, and live
+reorder — each reading back in a fresh context. Verified: disabling `emitUpdate` and
+`emitReorder` fails exactly three of them and leaves delete passing.
+
+Writing those tests surfaced an unrelated bug: shape drawing mutates `width`/`height` on
+`mouse:move` but never called `setCoords()`, so Fabric's cached hit-test box stayed at the
+mousedown size. **A freshly drawn shape was unselectable until a reload.** One-line fix in
+`onMouseUp`.
+
+⚠ Undo is now less durable than before, on purpose. The bulk save used to eventually
+write an undone canvas back; nothing does now. That is Sprint 3, and it is the reason
+Sprint 3 follows this one.
 
 ### Sprint 3 — Make undo honest · 50 min
 

@@ -59,7 +59,6 @@ duplicate, delete (immediate, no confirmation). Card thumbnails are a static gra
 - header with inline-editable title (blur or Enter → `PUT /boards/:id`) and an "N online"
   count driven by `presence:sync|joined|left`
 - renders `CanvasBoard`, `PresenceCursors`, `Toolbar`, and the export/comments/history panels
-- auto-save `setInterval` every 10 s → `autoSaveBoard` → `POST /canvas/:id/objects/bulk`
 - undo/redo buttons work by *dispatching a synthetic `keydown`* (`Ctrl+Z` / `Ctrl+Y`) on
   `window`, which the canvas's own shortcut handler picks up
 
@@ -107,12 +106,11 @@ A `forwardRef` component exposing `{ getCanvas(), loadObjects(objects) }` via
 **History** is a plain snapshot stack: every mutation pushes a
 `JSON.stringify(canvas.toJSON(['objectId']))`, truncating any redo tail, capped at 100
 entries. Undo/redo `loadFromJSON` the neighbouring entry. It is **local-only** — undo does
-not emit anything, so other clients (and the DB, until the next 10-second auto-save
-overwrites it) don't see it.
+not emit anything, so neither other clients nor the database see it. Since Sprint 2 removed
+the bulk auto-save there is no longer anything that eventually writes an undone state back,
+which is what Sprint 3 fixes.
 
 **Exported helpers** (used by `BoardEditor`):
-- `autoSaveBoard(boardId, canvas)` — maps every object to `{ objectId, type, data, zIndex: i }`
-  and bulk-upserts
 - `exportPNG` / `exportJPEG` — `toDataURL` at `multiplier: 2` (JPEG at quality 0.9),
   triggered via a synthetic `<a download>`
 - `exportJSON` — pretty-printed canvas JSON as a Blob download

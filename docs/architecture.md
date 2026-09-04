@@ -43,8 +43,7 @@ room), so there is no separate "sync later" queue.
    local Fabric event -> emit object:add|update|delete
    -> server persists to Mongo -> broadcasts object:added|updated|deleted to the room
    -> remote clients apply the change with isRemoteUpdate guard so it doesn't echo back
-5. Every 10s the client bulk-upserts the whole canvas (POST /canvas/:id/objects/bulk)
-6. On unmount: emit board:leave, disconnect; server removes the presence entry
+5. On unmount: emit board:leave, disconnect; server removes the presence entry
 ```
 
 ## Object identity

@@ -69,7 +69,7 @@ One document per Fabric.js object on a board.
 | `objectId` | String | required — client-generated uuid v4, stable across updates |
 | `type` | String | Fabric type: `rect`, `circle`, `triangle`, `path`, `textbox`, `group`, `polygon`, `line`, … |
 | `data` | Mixed | required — raw Fabric JSON (`obj.toObject(['objectId'])`) |
-| `zIndex` | Number | default 0; written by the bulk auto-save (array index) and `object:reorder` |
+| `zIndex` | Number | default 0; assigned on `object:add` and moved by `object:reorder` |
 | `locked` | Boolean | default `false` — **stored but no code reads it** |
 | `createdBy` | ObjectId → User | |
 

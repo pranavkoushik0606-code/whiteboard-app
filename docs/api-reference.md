@@ -95,9 +95,9 @@ Tokens are `jwt.sign({ id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN || '7d' })`
 | GET | `/:boardId/versions` | viewer | — | `{ versions }` (no `snapshot`) |
 | POST | `/:boardId/versions/:versionId/restore` | editor | — | `{ message, objects }` |
 
-- **objects/bulk** — a `bulkWrite` of upserts keyed on `{ board, objectId }`. Used by the
-  10-second auto-save and by JSON import. Idempotent; it never deletes, so objects removed
-  from the canvas are cleared through the socket `object:delete` path, not here.
+- **objects/bulk** — a `bulkWrite` of upserts keyed on `{ board, objectId }`. Reserved for
+  JSON import; **the client no longer calls it**. It was the 10-second auto-save until
+  Sprint 2 removed that. Idempotent, and it never deletes.
 - **versions (POST)** — after inserting, prunes to the 50 newest versions for that board.
   **No client code calls this**, so the version timeline stays empty in practice — see
   [implementation-status.md](implementation-status.md).

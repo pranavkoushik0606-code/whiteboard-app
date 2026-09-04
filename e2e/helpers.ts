@@ -63,6 +63,30 @@ export async function openBoard(browser: Browser, as: TestUser, boardId: string)
   return page;
 }
 
+export interface CanvasObjectSnapshot {
+  objectId: string;
+  type: string;
+  left: number;
+  top: number;
+  zIndex: number;
+}
+
+/** Full stacking-ordered snapshot of this client's canvas. */
+export function canvasObjects(page: Page): Promise<CanvasObjectSnapshot[]> {
+  return page.evaluate(() =>
+    (window as any).__fabricCanvas
+      .getObjects()
+      .filter((o: any) => o.objectId)
+      .map((o: any) => ({
+        objectId: o.objectId,
+        type: o.type,
+        left: Math.round(o.left),
+        top: Math.round(o.top),
+        zIndex: typeof o.zIndex === 'number' ? o.zIndex : 0,
+      }))
+  );
+}
+
 /** objectIds currently on this client's canvas. */
 export function canvasObjectIds(page: Page): Promise<string[]> {
   return page.evaluate(() =>
@@ -184,4 +208,11 @@ export function expectNoEvent(socket: Socket, event: string, windowMs = 1_500): 
     }, windowMs);
     socket.on(event, handler);
   });
+}
+
+/** Clicks a point on the canvas (coordinates relative to the canvas element). */
+export async function clickOnCanvas(page: Page, at: { x: number; y: number }) {
+  const box = await page.locator('canvas.upper-canvas').boundingBox();
+  if (!box) throw new Error('Canvas has no bounding box');
+  await page.mouse.click(box.x + at.x, box.y + at.y);
 }

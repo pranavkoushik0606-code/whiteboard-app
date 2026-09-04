@@ -26,7 +26,7 @@ UI → API/socket → database — not just that a schema field or endpoint is p
 - Shortcuts: `Delete`, `Ctrl+Z`, `Ctrl+Y` / `Ctrl+Shift+Z`, `Ctrl+D`, `[`, `]`
 - Grid toggle, stroke colour, fill colour, stroke width (1–20)
 - Undo/redo over a 100-entry local snapshot stack
-- Auto-save every 10 s via bulk upsert; full rehydration on reload
+- Every mutation persisted individually over its own socket event; full rehydration on reload
 
 **Collaboration**
 - Socket auth with the same JWT, per-board rooms
@@ -57,11 +57,10 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
 | Version snapshots | `POST /api/canvas/:id/versions` (+50-version pruning) | **never called** — so the history panel is always empty and restore has nothing to restore. This is the biggest single gap |
 | Comment mentions | `mentions[]` on the model, notification fan-out on create | no `@` autocomplete; the panel always posts an empty `mentions` array |
 | Comment pinning / threads | `x`, `y`, `parentComment` on the model | panel always posts `x: 0, y: 0` and renders a flat list |
-| Object z-order sync | `object:reorder` → `object:reordered` | `[` / `]` change the local stacking order but never emit |
 | In-progress stroke streaming | `draw:stream` relay | nothing emits or listens; remote users only see a stroke once it is finished |
 | Live text editing | `text:edit` relay | nothing emits or listens |
 | Clear canvas | `DELETE /api/canvas/:id/objects` | no button |
-| JSON import | `POST /api/canvas/:id/objects/bulk` accepts arbitrary object arrays | export-only menu; no file picker |
+| JSON import | `POST /api/canvas/:id/objects/bulk` accepts arbitrary object arrays — now its only caller would be import | export-only menu; no file picker |
 | Sync error surfacing | `error:sync` emitted on DB write failure | no listener, so a failed write is silent |
 | Board background / grid persistence | `Board.background`, `Board.gridEnabled` | editor hardcodes a white canvas and reads grid state from a client-only store |
 | Board privacy | `Board.privacy` enum | never set, never enforced |
@@ -86,14 +85,15 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
    suite has no way to mint a valid reset token without reading the Ethereal inbox.
 
 **Correctness**
-4. **Undo is local-only.** It neither emits socket events nor deletes from the database, and
-   the 10-second bulk auto-save only upserts — it never deletes. So undoing an object's
-   creation removes it from your screen but leaves it in Mongo: it reappears for you on
-   reload and never disappears for anyone else.
+4. **Undo is local-only.** It emits nothing, so an undo never reaches the database or the
+   other people on the board — undo a creation and the object is still in Mongo, undo a
+   move and the moved position is still what reloads. Before Sprint 2 the bulk auto-save
+   masked half of this by eventually re-writing whatever was on the canvas. Sprint 3 makes
+   undo emit.
 5. Remote cursors use **viewport** coordinates (`clientX/Y`), not canvas coordinates, so
    they point at the wrong place whenever two people are panned or zoomed differently.
 6. `restoreVersion` does not broadcast — other people in the room keep the old canvas until
-   they reload, and their next auto-save can re-upsert the objects you just restored away.
+   they reload.
 7. Highlighter transparency does not apply: the code sets `opacity` on a Fabric 6
    `PencilBrush`, which has no such property. Highlighter is just a wider opaque stroke.
 8. `Board.isFavorite` is a property of the board, not of the (user, board) pair — once board

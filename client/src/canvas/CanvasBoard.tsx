@@ -3,7 +3,6 @@ import * as fabric from 'fabric';
 import { v4 as uuid } from 'uuid';
 import { Socket } from 'socket.io-client';
 import { useCanvasStore, ToolType } from '../store/useCanvasStore';
-import { api } from '../lib/api';
 
 interface Props {
   boardId: string;
@@ -22,6 +21,21 @@ export interface CanvasBoardHandle {
 function withMeta(obj: fabric.Object, objectId = uuid()) {
   (obj as any).objectId = objectId;
   return obj;
+}
+
+// Stacking order is mirrored onto each object as `zIndex` and sent with every
+// add/reorder, because the socket path is now the only thing that writes to the
+// database -- nothing else recomputes it from array position afterwards.
+const zOf = (obj: any): number => (typeof obj.zIndex === 'number' ? obj.zIndex : 0);
+
+function topZ(canvas: fabric.Canvas) {
+  const objects = canvas.getObjects();
+  return objects.length ? Math.max(...objects.map(zOf)) : 0;
+}
+
+function bottomZ(canvas: fabric.Canvas) {
+  const objects = canvas.getObjects();
+  return objects.length ? Math.min(...objects.map(zOf)) : 0;
 }
 
 const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
@@ -45,6 +59,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
       for (const o of objects) {
         const [enlivened] = await fabric.util.enlivenObjects([o.data]);
         withMeta(enlivened as fabric.Object, o.objectId);
+        (enlivened as any).zIndex = o.zIndex ?? 0;
         canvas.add(enlivened as fabric.Object);
       }
       canvas.renderAll();
@@ -70,6 +85,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     initialObjects.forEach((o) => {
       fabric.util.enlivenObjects([o.data]).then(([enlivened]) => {
         withMeta(enlivened as fabric.Object, o.objectId);
+        (enlivened as any).zIndex = o.zIndex ?? 0;
         canvas.add(enlivened as fabric.Object);
         canvas.renderAll();
       });
@@ -197,6 +213,10 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
 
     const onMouseUp = () => {
       if (drawingShapeRef.current) {
+        // Fabric caches hit-test coordinates; width/height were mutated on
+        // mouse:move, so without this the shape stays unselectable at its
+        // mousedown size (a few px) until something re-enlivens it.
+        drawingShapeRef.current.setCoords();
         emitAdd(drawingShapeRef.current);
         pushHistory(canvas, historyRef);
       }
@@ -287,10 +307,28 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
 
   const emitAdd = useCallback(
     (obj: fabric.Object) => {
+      const canvas = fabricRef.current;
+      const zIndex = canvas ? topZ(canvas) + 1 : 0;
+      (obj as any).zIndex = zIndex;
       socket?.emit('object:add', {
         boardId,
-        object: { objectId: (obj as any).objectId, type: obj.type, data: obj.toObject(['objectId']) },
+        object: {
+          objectId: (obj as any).objectId,
+          type: obj.type,
+          data: obj.toObject(['objectId']),
+          zIndex,
+        },
       });
+    },
+    [socket, boardId]
+  );
+
+  // `[` and `]` only ever move an object to one extreme, so we can hand it a
+  // zIndex outside the current range instead of renumbering every sibling.
+  const emitReorder = useCallback(
+    (obj: fabric.Object, zIndex: number) => {
+      (obj as any).zIndex = zIndex;
+      socket?.emit('object:reorder', { boardId, objectId: (obj as any).objectId, zIndex });
     },
     [socket, boardId]
   );
@@ -320,6 +358,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     const onAdded = async (payload: any) => {
       const [obj] = await fabric.util.enlivenObjects([payload.data]);
       withMeta(obj as fabric.Object, payload.objectId);
+      (obj as any).zIndex = payload.zIndex ?? 0;
       isRemoteUpdate.current = true;
       canvas.add(obj as fabric.Object);
       canvas.renderAll();
@@ -341,13 +380,27 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
       if (target) canvas.remove(target);
     };
 
+    const onReordered = (payload: any) => {
+      const target = canvas.getObjects().find((o: any) => o.objectId === payload.objectId);
+      if (!target) return;
+      (target as any).zIndex = payload.zIndex;
+      isRemoteUpdate.current = true;
+      // Senders only ever emit an extreme, so front/back reproduces it exactly.
+      if (payload.zIndex >= topZ(canvas)) canvas.bringObjectToFront(target);
+      else canvas.sendObjectToBack(target);
+      canvas.renderAll();
+      isRemoteUpdate.current = false;
+    };
+
     socket.on('object:added', onAdded);
     socket.on('object:updated', onUpdated);
     socket.on('object:deleted', onDeleted);
+    socket.on('object:reordered', onReordered);
     return () => {
       socket.off('object:added', onAdded);
       socket.off('object:updated', onUpdated);
       socket.off('object:deleted', onDeleted);
+      socket.off('object:reordered', onReordered);
     };
   }, [socket]);
 
@@ -441,16 +494,18 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
         });
       } else if (e.key === ']' && active) {
         canvas.bringObjectToFront(active);
+        emitReorder(active, topZ(canvas) + 1);
         pushHistory(canvas, historyRef);
       } else if (e.key === '[' && active) {
         canvas.sendObjectToBack(active);
+        emitReorder(active, bottomZ(canvas) - 1);
         pushHistory(canvas, historyRef);
       }
     };
 
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [emitAdd, emitDelete]);
+  }, [emitAdd, emitDelete, emitReorder]);
 
   return (
     <div className="flex-1 overflow-hidden relative bg-neutral-50 dark:bg-neutral-900">
@@ -539,16 +594,6 @@ async function redo(
   await canvas.loadFromJSON(h.stack[h.index]);
   canvas.renderAll();
   isRemoteUpdate.current = false;
-}
-
-export async function autoSaveBoard(boardId: string, canvas: fabric.Canvas) {
-  const objects = canvas.getObjects().map((o: any, i) => ({
-    objectId: o.objectId,
-    type: o.type,
-    data: o.toObject(['objectId']),
-    zIndex: i,
-  }));
-  await api.post(`/canvas/${boardId}/objects/bulk`, { objects });
 }
 
 export async function exportPNG(canvas: fabric.Canvas, filename: string) {

@@ -4,7 +4,7 @@ import { ArrowLeft, Users } from 'lucide-react';
 import { api } from '../lib/api';
 import { useSocket } from '../hooks/useSocket';
 import { useCanvasStore } from '../store/useCanvasStore';
-import CanvasBoard, { CanvasBoardHandle, autoSaveBoard, exportPNG, exportJPEG, exportJSON } from '../canvas/CanvasBoard';
+import CanvasBoard, { CanvasBoardHandle, exportPNG, exportJPEG, exportJSON } from '../canvas/CanvasBoard';
 import Toolbar from '../components/Toolbar';
 import PresenceCursors from '../components/PresenceCursors';
 import CommentsPanel from '../components/CommentsPanel';
@@ -53,15 +53,9 @@ export default function BoardEditor() {
     };
   }, [socketRef.current]);
 
-  // Auto-save every 10s
-  useEffect(() => {
-    if (!boardId) return;
-    const interval = setInterval(() => {
-      const canvas = canvasHandleRef.current?.getCanvas();
-      if (canvas) autoSaveBoard(boardId, canvas);
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [boardId]);
+  // No periodic save. Every mutation is persisted by its own socket event as it
+  // happens; the old 10s bulk upsert re-wrote every object on the board from
+  // every connected client, which was pure duplication.
 
   const commitTitle = async () => {
     setEditingTitle(false);
