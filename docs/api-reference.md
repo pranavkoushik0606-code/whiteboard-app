@@ -39,8 +39,32 @@ every visitor looks like the same person to the rate limiter.
 | POST | `/reset-password/:token` | none | `{ password }` | `{ message, token }` |
 | PUT | `/change-password` | JWT | `{ currentPassword, newPassword }` | `{ message }` |
 | PUT | `/profile` | JWT | `{ name?, theme?, avatarUrl? }` | `{ user }` |
+| DELETE | `/account` | JWT | `{ password }` | `{ message, boardsDeleted, commentsDeleted, objectsAnonymised, versionsAnonymised }` |
 
 Details:
+
+- **account deletion** — asks for the password even though the caller already holds a valid
+  token. This is the only endpoint that destroys data it cannot put back, and a token sits in
+  `localStorage` for seven days; re-authenticating is what stops a stolen one being an erase
+  button. `400` with no password, `401` with the wrong one.
+
+  What it does is in `services/accountDeletion.js`, and the interesting part is what
+  *survives*:
+
+  | | |
+  |---|---|
+  | Boards they own | deleted, with the same cascade as `DELETE /boards/:id` — objects, versions, comments, members, favourites, notifications. This takes collaborators' work with it, which is why the count comes back in the response |
+  | What they drew on **other people's** boards | **kept**, with `createdBy` unset. It belongs to the board, not to them; tearing holes in a shared canvas is not what deleting an account should mean |
+  | Their comments | deleted. `Comment.author` is `required` and every read populates it, so a dangling reference comes back `author: null` and takes the comments panel down for everyone else on that board |
+  | Mentions of them elsewhere | `$pull`ed out of the comments that survive, for the same reason |
+  | Their memberships, favourites, notifications | deleted |
+
+  Anyone currently sitting in a board that is about to be destroyed is sent
+  `board:role` with a null role — the same signal `removeMember` uses — so the editor takes
+  them to the dashboard instead of leaving them drawing into a board that no longer exists.
+
+  `protect` looks the user up on every request, so any outstanding token stops working the
+  moment the row goes, rather than lasting until its expiry.
 
 - **signup** — validates presence of all three fields, `validator.isEmail(email)`, and
   password ≥ 6. `409` if the email is already registered. Rate-limited to 20 / 15 min.

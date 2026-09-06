@@ -4,6 +4,7 @@ import User from '../models/User.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { generateToken } from '../utils/generateToken.js';
 import { sendEmail } from '../utils/sendEmail.js';
+import { deleteAccount } from '../services/accountDeletion.js';
 
 // @route POST /api/auth/signup
 export const signup = asyncHandler(async (req, res) => {
@@ -110,4 +111,28 @@ export const updateProfile = asyncHandler(async (req, res) => {
   if (avatarUrl) req.user.avatarUrl = avatarUrl;
   await req.user.save();
   res.json({ user: req.user.toSafeObject() });
+});
+
+// @route DELETE /api/auth/account
+/**
+ * The password is required even though the caller already holds a valid token.
+ * This is the one endpoint that destroys data it cannot put back, and a token
+ * lives in localStorage for seven days — re-authenticating is what stops a
+ * stolen one from being an erase button.
+ */
+export const deleteMyAccount = asyncHandler(async (req, res) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ message: 'Your password is required to delete your account' });
+  }
+
+  // req.user comes from `protect`, which does not select the password.
+  const user = await User.findById(req.user._id).select('+password');
+  if (!user) return res.status(404).json({ message: 'User not found' });
+  if (!(await user.comparePassword(password))) {
+    return res.status(401).json({ message: 'Incorrect password' });
+  }
+
+  const summary = await deleteAccount(req.app.get('io'), user._id);
+  res.json({ message: 'Account deleted', ...summary });
 });

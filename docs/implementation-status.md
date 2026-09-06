@@ -90,6 +90,7 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
 
 | Capability | Backend | Missing piece |
 |---|---|---|
+| Account deletion | `DELETE /api/auth/account`, password-confirmed, cascades and anonymises | no button in Settings; reachable only by calling the API |
 | Comment pinning / threads | `x`, `y`, `parentComment` on the model | panel always posts `x: 0, y: 0` and renders a flat list |
 | In-progress stroke streaming | `draw:stream` relay | nothing emits or listens; remote users only see a stroke once it is finished |
 | Live text editing | `text:edit` relay | nothing emits or listens |
