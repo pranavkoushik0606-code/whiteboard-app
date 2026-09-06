@@ -25,6 +25,9 @@ UI → API/socket → database — not just that a schema field or endpoint is p
 - Move / resize / rotate / multi-select via Fabric controls
 - Shortcuts: `Delete`, `Ctrl+Z`, `Ctrl+Y` / `Ctrl+Shift+Z`, `Ctrl+D`, `[`, `]`
 - Grid toggle, stroke colour, fill colour, stroke width (1–20)
+- Canvas background and grid follow the theme; the default stroke flips with it so the pen
+  stays visible
+- Clear-canvas button behind an in-page confirmation, broadcast to the room
 - Undo/redo over a 100-entry snapshot stack, broadcast to the room and persisted
 - Every mutation persisted individually over its own socket event; full rehydration on reload
 
@@ -45,7 +48,9 @@ UI → API/socket → database — not just that a schema field or endpoint is p
 - List, post, live append to everyone in the room, resolve/unresolve toggle
 
 **Export**
-- PNG and JPEG at 2× via `toDataURL`, plus raw canvas JSON download
+- PNG and JPEG at 2× via `toDataURL`, PDF via `jspdf` (loaded on demand), plus raw canvas
+  JSON download
+- Board thumbnails captured on the way out, cropped to the objects, shown on dashboard cards
 
 **Other**
 - Dark/light mode across the app, persisted to `localStorage`
@@ -65,13 +70,11 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
 | Comment pinning / threads | `x`, `y`, `parentComment` on the model | panel always posts `x: 0, y: 0` and renders a flat list |
 | In-progress stroke streaming | `draw:stream` relay | nothing emits or listens; remote users only see a stroke once it is finished |
 | Live text editing | `text:edit` relay | nothing emits or listens |
-| Clear canvas | `DELETE /api/canvas/:id/objects` | no button |
 | JSON import | `POST /api/canvas/:id/objects/bulk` accepts arbitrary object arrays — now its only caller would be import | export-only menu; no file picker |
 | Sync error surfacing | `error:sync` emitted on DB write failure | no listener, so a failed write is silent |
 | Board background / grid persistence | `Board.background`, `Board.gridEnabled` | editor hardcodes a white canvas and reads grid state from a client-only store |
 | Board privacy | `Board.privacy` enum | never set, never enforced |
 | Object locking | `CanvasObject.locked` | never set, never read |
-| Board thumbnails | `Board.thumbnail` | never generated; cards show a static gradient |
 | `pen`, `marker`, `laser` tools | present in the `ToolType` union (`marker` also has brush sizing) | no toolbar buttons |
 
 ## Known gaps & bugs
@@ -127,7 +130,7 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
     flat config in `client/eslint.config.js`; exits 0 with 10 warnings.
 16. ~~No tests of any kind.~~ **Partly fixed in Sprint 0** — an 11-test Playwright suite
     covers realtime sync and authorization. Still no unit or API-level tests.
-17. `jspdf` is a dependency but is never imported — there is no PDF export.
+17. ~~`jspdf` is a dependency but is never imported.~~ **Fixed in Sprint 5.**
 18. ~~`client/tsconfig.tsbuildinfo` is committed.~~ **Fixed in Sprint 0** — untracked and
     ignored.
 

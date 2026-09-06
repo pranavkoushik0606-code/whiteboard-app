@@ -32,8 +32,18 @@ export const bulkUpsertObjects = asyncHandler(async (req, res) => {
 
 // @route DELETE /api/canvas/:boardId/objects
 export const clearObjects = asyncHandler(async (req, res) => {
-  await CanvasObject.deleteMany({ board: req.params.boardId });
-  res.json({ message: 'Canvas cleared' });
+  const boardId = req.params.boardId;
+  const { deletedCount } = await CanvasObject.deleteMany({ board: boardId });
+
+  // Same reasoning as restoreVersion: without this, everyone else keeps a
+  // canvas full of objects that no longer exist and writes them back on the
+  // next edit.
+  req.app.get('io')?.to(String(boardId)).emit('board:cleared', {
+    boardId: String(boardId),
+    by: String(req.user._id),
+  });
+
+  res.json({ message: 'Canvas cleared', deletedCount });
 });
 
 // @route POST /api/canvas/:boardId/versions  ("Save version" button)

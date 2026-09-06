@@ -1,6 +1,6 @@
 import {
   MousePointer2, Pencil, Highlighter, Eraser, Square, Circle, Triangle, Diamond, Star,
-  ArrowRight, Minus, Type, StickyNote, Undo2, Redo2, Grid3x3, Download, History, MessageSquare,
+  ArrowRight, Minus, Type, StickyNote, Undo2, Redo2, Grid3x3, Download, History, MessageSquare, Trash2,
 } from 'lucide-react';
 import { useCanvasStore, ToolType } from '../store/useCanvasStore';
 
@@ -10,6 +10,7 @@ interface Props {
   onExportClick: () => void;
   onHistoryClick: () => void;
   onCommentsClick: () => void;
+  onClearClick: () => void;
 }
 
 const tools: { id: ToolType; icon: React.ReactNode; label: string }[] = [
@@ -28,7 +29,7 @@ const tools: { id: ToolType; icon: React.ReactNode; label: string }[] = [
   { id: 'sticky-note', icon: <StickyNote size={18} />, label: 'Sticky note' },
 ];
 
-export default function Toolbar({ onUndo, onRedo, onExportClick, onHistoryClick, onCommentsClick }: Props) {
+export default function Toolbar({ onUndo, onRedo, onExportClick, onHistoryClick, onCommentsClick, onClearClick }: Props) {
   const { tool, setTool, strokeColor, setStrokeColor, fillColor, setFillColor, strokeWidth, setStrokeWidth, gridVisible, toggleGrid } =
     useCanvasStore();
 
@@ -96,6 +97,13 @@ export default function Toolbar({ onUndo, onRedo, onExportClick, onHistoryClick,
       </button>
       <button title="Export" onClick={onExportClick} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800">
         <Download size={18} />
+      </button>
+      <button
+        title="Clear canvas"
+        onClick={onClearClick}
+        className="p-2 rounded-xl hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950"
+      >
+        <Trash2 size={18} />
       </button>
     </div>
   );

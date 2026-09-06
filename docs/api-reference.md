@@ -90,11 +90,13 @@ Tokens are `jwt.sign({ id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN || '7d' })`
 |---|---|---|---|---|
 | GET | `/:boardId/objects` | viewer | — | `{ objects }` |
 | POST | `/:boardId/objects/bulk` | editor | `{ objects: [{ objectId, type, data, zIndex }] }` | `{ message }` |
-| DELETE | `/:boardId/objects` | editor | — | `{ message }` |
+| DELETE | `/:boardId/objects` | editor | — | `{ message, deletedCount }` |
 | POST | `/:boardId/versions` | editor | `{ label? }` | `201 { version }` |
 | GET | `/:boardId/versions` | viewer | — | `{ versions }` (no `snapshot`) |
 | POST | `/:boardId/versions/:versionId/restore` | editor | — | `{ message, objects }` |
 
+- **objects (DELETE)** — broadcasts `board:cleared` into the board room for the same reason
+  restore does; without it everyone else keeps editing objects that no longer exist.
 - **objects/bulk** — a `bulkWrite` of upserts keyed on `{ board, objectId }`. Reserved for
   JSON import; **the client no longer calls it**. It was the 10-second auto-save until
   Sprint 2 removed that. Idempotent, and it never deletes.

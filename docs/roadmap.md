@@ -157,7 +157,7 @@ Seven tests in `e2e/versions.spec.ts`, verified against three mutations: removin
 fails only the room test, disabling the mutation counter fails only the automatic-capture test,
 and reverting the scoped lookup fails only the cross-board test.
 
-### Sprint 5 — Cheap visible wins · 60 min
+### Sprint 5 — Cheap visible wins · 60 min · ✅ DONE
 
 The first sprint you can actually see.
 
@@ -165,6 +165,34 @@ The first sprint you can actually see.
 - PDF export — `jspdf` is already a dependency and has never been imported — 15 min
 - Clear-canvas button on the existing `DELETE /canvas/:id/objects`, with a confirm — 10 min
 - Dark-mode canvas background (currently hardcoded white) — 10 min
+
+**What actually shipped.** All four, with three adjustments.
+
+*Thumbnails* are cropped to the objects rather than to whatever the author was looking at.
+A flat `multiplier` captures the current viewport, so a board you left scrolled into an
+empty corner would have photographed the empty corner. `toDataURL`'s crop is expressed in
+**screen** pixels, not scene ones, so the viewport is flattened to identity first and put
+back afterwards. Output is a ≤240 px JPEG at quality 0.5 — a few kB, which matters because
+`GET /boards` returns every thumbnail on the dashboard.
+
+*Clear canvas* broadcasts `board:cleared`, the same problem Sprint 4 found in `restoreVersion`:
+without it everyone else keeps a canvas full of objects that no longer exist and writes them
+back on their next edit. The confirmation is an in-page card, not `window.confirm` — a native
+modal blocks the event loop and would freeze anything driving the page.
+
+*Dark canvas* needed a second change to be usable at all: the default stroke is `#1e1e1e`, so
+a dark canvas made the default pen invisible. The theme swap flips the default stroke too, and
+only when it is still the default — a colour the user picked is never touched. Undo also had to
+re-apply the background, since snapshots carry the colour they were taken with.
+
+Six tests in `e2e/board-tools.spec.ts`, including one that downloads the PDF and checks it
+starts with `%PDF` — the first thing in this repo's history to prove `jspdf` runs at all.
+
+The thumbnail test needed rewriting after mutation testing: "an untouched board does not get a
+blank thumbnail" passed even with both capture guards removed, because a blank capture writes
+`''`, which is exactly what that test expected. The guard that matters protects a board that
+*already has* a thumbnail from StrictMode's throwaway first mount, so the test now re-opens a
+board and checks the thumbnail survives. That version does fail without the guards.
 
 ### Sprint 6 — Pointing at the right things · 30 min
 

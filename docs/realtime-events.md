@@ -69,6 +69,7 @@ per-process — a multi-instance deployment needs the Redis adapter for this to 
 | `object:deleted` | `{ objectId, by }` | `CanvasBoard` |
 | `object:reordered` | `{ objectId, zIndex }` | `CanvasBoard` |
 | `board:restored` | `{ boardId, versionId, by, objects }` — emitted by `POST /versions/:id/restore`, not by a socket event | `BoardEditor` (reloads the canvas; skips its own echo by comparing `by`) |
+| `board:cleared` | `{ boardId, by }` — emitted by `DELETE /canvas/:id/objects` | `BoardEditor` (empties the canvas; skips its own echo) |
 | `draw:stream` | `{ strokeId, points, by }` | *nothing yet* |
 | `text:edit` | `{ objectId, text, by }` | *nothing yet* |
 | `comment:new` | the comment | `CommentsPanel` |

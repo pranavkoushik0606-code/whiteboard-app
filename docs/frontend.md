@@ -51,8 +51,8 @@ error message shown inline. **ForgotPassword** — posts the email, then renders
 "New board", search box, filter pills (`all | recent | favorite | shared`), grid/list
 toggle. `fetchBoards` re-runs whenever `search` or `filter` changes (no debounce — one
 request per keystroke). Each card has a `⋮` menu: favourite, rename (inline edit),
-duplicate, delete (immediate, no confirmation). Card thumbnails are a static gradient —
-`Board.thumbnail` is never generated.
+duplicate, delete (immediate, no confirmation). Cards show `Board.thumbnail` when there is
+one, falling back to a gradient placeholder.
 
 **BoardEditor** — the whole editor:
 - `GET /boards/:boardId` for board + objects, opens the socket via `useSocket`
@@ -71,11 +71,11 @@ duplicate, delete (immediate, no confirmation). Card thumbnails are a static gra
 
 | Component | Role |
 |---|---|
-| `Toolbar` | Floating glass bar, bottom-centre: 13 tool buttons, stroke colour, fill colour, stroke width slider (1–20), undo, redo, grid toggle, comments, history, export |
+| `Toolbar` | Floating glass bar, bottom-centre: 13 tool buttons, stroke colour, fill colour, stroke width slider (1–20), undo, redo, grid toggle, comments, history, export, clear canvas |
 | `PresenceCursors` | Fixed full-screen overlay (`pointer-events-none`) drawing an SVG arrow + name badge per remote socket, in that user's colour |
 | `CommentsPanel` | Right drawer: loads `GET /comments/:boardId`, appends live via `comment:new`, post box (Enter to send), per-comment resolve toggle |
 | `VersionHistoryPanel` | Right drawer: a name field and Save button that captures a version (the snapshot is built server-side, so nothing but the label is sent), plus a list of versions with label, timestamp, author and a restore button. Restore reloads the canvas locally and is broadcast to the rest of the room as `board:restored` |
-| `ExportMenu` | Small popover: PNG / JPEG / JSON |
+| `ExportMenu` | Small popover: PNG / JPEG / PDF / JSON. `jspdf` is dynamically imported so it stays out of the initial bundle |
 | `ProtectedRoute` | Waits on `loading`, then redirects to `/login` if there's no user |
 
 ## The canvas engine — `canvas/CanvasBoard.tsx`
@@ -86,7 +86,11 @@ A `forwardRef` component exposing `{ getCanvas(), loadObjects(objects) }` via
 1. **Init** — creates the `fabric.Canvas` sized to `window.innerWidth × innerHeight-64`,
    `preserveObjectStacking: true`, enlivens `initialObjects`, seeds the history stack, and
    wires a `resize` listener. Disposes on unmount.
-2. **Grid** — toggles a CSS `linear-gradient` background (24 px squares) on the canvas element.
+2. **Grid & theme** — toggles a CSS `linear-gradient` background (24 px squares) on the canvas
+   element, and repaints the Fabric background colour when the theme changes. The canvas is a
+   bitmap, so a `dark` class on `<html>` never reaches it. The theme swap also flips the
+   default stroke colour (`#1e1e1e` ↔ `#f5f5f5`) — but only while it is still the default, so
+   a colour the user picked is left alone.
 3. **Brush** — sets `isDrawingMode` for `pencil|pen|highlighter|marker` and builds a
    `PencilBrush`; highlighter is 6× width, marker 3×.
 4. **Shape drawing** — `mouse:down` creates the shape at the pointer, `mouse:move` resizes
@@ -124,8 +128,14 @@ Two supporting rules make that safe:
   canvas goes through `serializeCanvas` now.
 
 **Exported helpers** (used by `BoardEditor`):
+- `thumbnailDataUrl` — a ≤240 px JPEG cropped to the objects' bounding box. `toDataURL`'s crop
+  is in **screen** pixels, so the viewport is flattened to identity first and restored after;
+  without that, a board left scrolled into an empty corner photographs the empty corner. Called
+  from the canvas teardown, and skipped before hydration finishes so StrictMode's throwaway
+  first mount cannot blank a good thumbnail
 - `exportPNG` / `exportJPEG` — `toDataURL` at `multiplier: 2` (JPEG at quality 0.9),
   triggered via a synthetic `<a download>`
+- `exportPDF` — `jspdf` at page size = canvas size, imported dynamically
 - `exportJSON` — pretty-printed canvas JSON as a Blob download
 
 Helper factories `makeStickyNote(x, y)` and `makeStar(...)` (5-spike polygon, outer radius

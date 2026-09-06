@@ -126,7 +126,15 @@ export default function Dashboard() {
                 className="group relative rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden hover:shadow-lg transition cursor-pointer"
                 onClick={() => navigate(`/board/${b._id}`)}
               >
-                <div className="h-28 bg-gradient-to-br from-primary-100 to-primary-50 dark:from-neutral-800 dark:to-neutral-900" />
+                {b.thumbnail ? (
+                  <img
+                    src={b.thumbnail}
+                    alt=""
+                    className="h-28 w-full object-cover bg-white dark:bg-neutral-900"
+                  />
+                ) : (
+                  <div className="h-28 bg-gradient-to-br from-primary-100 to-primary-50 dark:from-neutral-800 dark:to-neutral-900" />
+                )}
                 <div className="p-3 flex items-center justify-between">
                   {renamingId === b._id ? (
                     <input

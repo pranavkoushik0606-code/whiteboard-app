@@ -47,11 +47,20 @@ export async function invite(owner: TestUser, boardId: string, email: string, ro
  * seeded straight into localStorage rather than driven through the login form —
  * these tests are about the sync path, not about the login page.
  */
-export async function openBoard(browser: Browser, as: TestUser, boardId: string): Promise<Page> {
+export async function openBoard(
+  browser: Browser,
+  as: TestUser,
+  boardId: string,
+  opts: { theme?: 'light' | 'dark' } = {}
+): Promise<Page> {
   const context = await browser.newContext();
-  await context.addInitScript((token) => {
-    window.localStorage.setItem('token', token);
-  }, as.token);
+  await context.addInitScript(
+    ({ token, theme }) => {
+      window.localStorage.setItem('token', token);
+      if (theme) window.localStorage.setItem('theme', theme);
+    },
+    { token: as.token, theme: opts.theme }
+  );
 
   const page = await context.newPage();
   await page.goto(`/board/${boardId}`);

@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 import { useSocket } from '../hooks/useSocket';
 import { useAuthStore } from '../store/useAuthStore';
 import { useCanvasStore } from '../store/useCanvasStore';
-import CanvasBoard, { CanvasBoardHandle, exportPNG, exportJPEG, exportJSON } from '../canvas/CanvasBoard';
+import CanvasBoard, { CanvasBoardHandle, exportPNG, exportJPEG, exportPDF, exportJSON } from '../canvas/CanvasBoard';
 import Toolbar from '../components/Toolbar';
 import PresenceCursors from '../components/PresenceCursors';
 import CommentsPanel from '../components/CommentsPanel';
@@ -26,6 +26,8 @@ export default function BoardEditor() {
   const [showComments, setShowComments] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const { gridVisible } = useCanvasStore();
   const currentUserId = useAuthStore((s) => s.user?.id);
 
@@ -68,6 +70,32 @@ export default function BoardEditor() {
     window.dispatchEvent(new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true }));
   };
 
+  // Written on the way out rather than on a timer: a thumbnail only has to be
+  // right the next time someone looks at the dashboard. A full browser close
+  // will skip it -- the effect cleanup does not survive that -- so the card
+  // keeps whatever the last clean exit produced.
+  const handleThumbnail = useCallback(
+    (thumbnail: string) => {
+      if (!boardId) return;
+      // A viewer's PUT is a 403 by design; nothing here is worth interrupting a
+      // page unload for either way.
+      api.put(`/boards/${boardId}`, { thumbnail }).catch(() => {});
+    },
+    [boardId]
+  );
+
+  const clearCanvas = async () => {
+    if (!boardId) return;
+    setClearing(true);
+    try {
+      await api.delete(`/canvas/${boardId}/objects`);
+      canvasHandleRef.current?.loadObjects([]);
+      setShowClearConfirm(false);
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const handleRestore = useCallback((restoredObjects: any[]) => {
     canvasHandleRef.current?.loadObjects(
       restoredObjects.map((o: any) => ({ objectId: o.objectId, data: o.data, zIndex: o.zIndex }))
@@ -84,9 +112,15 @@ export default function BoardEditor() {
       if (payload.by === currentUserId) return;
       handleRestore(payload.objects || []);
     };
+    const onCleared = (payload: any) => {
+      if (payload.by === currentUserId) return;
+      canvasHandleRef.current?.loadObjects([]);
+    };
     socket.on('board:restored', onRestored);
+    socket.on('board:cleared', onCleared);
     return () => {
       socket.off('board:restored', onRestored);
+      socket.off('board:cleared', onCleared);
     };
   }, [socketRef.current, handleRestore, currentUserId]);
 
@@ -129,6 +163,7 @@ export default function BoardEditor() {
           socket={socketRef.current}
           initialObjects={objects}
           gridVisible={gridVisible}
+          onThumbnail={handleThumbnail}
         />
         <PresenceCursors socket={socketRef.current} boardId={boardId!} />
 
@@ -138,7 +173,35 @@ export default function BoardEditor() {
           onExportClick={() => setShowExport((v) => !v)}
           onHistoryClick={() => setShowHistory(true)}
           onCommentsClick={() => setShowComments(true)}
+          onClearClick={() => setShowClearConfirm(true)}
         />
+
+        {showClearConfirm && (
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/30">
+            <div className="w-80 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 shadow-2xl">
+              <h2 className="font-medium mb-1">Clear this board?</h2>
+              <p className="text-sm text-neutral-500 mb-4">
+                Every object is deleted for everyone. This cannot be undone.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setShowClearConfirm(false)}
+                  className="px-3 py-2 text-sm rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  title="Confirm clear canvas"
+                  onClick={clearCanvas}
+                  disabled={clearing}
+                  className="px-3 py-2 text-sm rounded-xl bg-red-600 text-white disabled:opacity-50 hover:bg-red-700"
+                >
+                  Clear board
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showExport && (
           <ExportMenu
@@ -150,6 +213,10 @@ export default function BoardEditor() {
             onExportJPEG={() => {
               const c = canvasHandleRef.current?.getCanvas();
               if (c) exportJPEG(c, title);
+            }}
+            onExportPDF={() => {
+              const c = canvasHandleRef.current?.getCanvas();
+              if (c) exportPDF(c, title);
             }}
             onExportJSON={() => {
               const c = canvasHandleRef.current?.getCanvas();

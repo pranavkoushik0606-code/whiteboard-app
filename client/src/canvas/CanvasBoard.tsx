@@ -3,13 +3,24 @@ import * as fabric from 'fabric';
 import { v4 as uuid } from 'uuid';
 import { Socket } from 'socket.io-client';
 import { useCanvasStore, ToolType } from '../store/useCanvasStore';
+import { useTheme } from '../context/ThemeContext';
 
 interface Props {
   boardId: string;
   socket: Socket | null;
   initialObjects: any[];
   gridVisible: boolean;
+  /** Called once with a JPEG data URL just before the canvas is disposed. */
+  onThumbnail?: (dataUrl: string) => void;
 }
+
+// The canvas is a bitmap, not a themed DOM node, so its background and grid have
+// to be repainted by hand when the theme flips.
+const CANVAS_BG = { light: '#ffffff', dark: '#171717' };
+const GRID_LINE = { light: '#eeeeee', dark: '#2a2a2a' };
+// Swapped for each other when the theme changes, so the default pen stays
+// visible. A colour the user picked themselves is never touched.
+const DEFAULT_STROKE = { light: '#1e1e1e', dark: '#f5f5f5' };
 
 export interface CanvasBoardHandle {
   getCanvas: () => fabric.Canvas | null;
@@ -66,9 +77,10 @@ function bottomZ(canvas: fabric.Canvas) {
 }
 
 const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
-  { boardId, socket, initialObjects, gridVisible },
+  { boardId, socket, initialObjects, gridVisible, onThumbnail },
   ref
 ) {
+  const { theme } = useTheme();
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const isRemoteUpdate = useRef(false);
@@ -76,6 +88,14 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
   const { tool, strokeColor, fillColor, strokeWidth } = useCanvasStore();
   const drawingShapeRef = useRef<fabric.Object | null>(null);
   const startPointRef = useRef<{ x: number; y: number } | null>(null);
+  const hydratedRef = useRef(false);
+  const themeRef = useRef(theme);
+  // Held in a ref so a new callback identity never re-runs the init effect,
+  // which would tear the canvas down and rebuild it.
+  const onThumbnailRef = useRef(onThumbnail);
+  useEffect(() => {
+    onThumbnailRef.current = onThumbnail;
+  });
 
   useImperativeHandle(ref, () => ({
     getCanvas: () => fabricRef.current,
@@ -95,7 +115,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     const canvas = new fabric.Canvas(canvasElRef.current, {
       width: window.innerWidth,
       height: window.innerHeight - 64,
-      backgroundColor: '#ffffff',
+      backgroundColor: CANVAS_BG[theme],
       preserveObjectStacking: true,
     });
     fabricRef.current = canvas;
@@ -115,6 +135,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
       // Undo emits the diff between two snapshots now, so an empty baseline
       // would delete every pre-existing object on the first Ctrl+Z.
       resetHistory(canvas, historyRef);
+      hydratedRef.current = true;
       if (import.meta.env.DEV) (window as any).__canvasReady = true;
     })();
 
@@ -126,22 +147,45 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     return () => {
       disposed = true;
       if (import.meta.env.DEV) (window as any).__canvasReady = false;
+      // Last chance to photograph the board -- dispose() is next. Skipped
+      // before hydration finishes so StrictMode's throwaway first mount cannot
+      // overwrite a real thumbnail with a blank one.
+      if (hydratedRef.current) {
+        const dataUrl = thumbnailDataUrl(canvas);
+        if (dataUrl) onThumbnailRef.current?.(dataUrl);
+      }
       window.removeEventListener('resize', handleResize);
       canvas.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ---- Canvas background follows the theme ----
+  useEffect(() => {
+    themeRef.current = theme;
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    canvas.backgroundColor = CANVAS_BG[theme];
+    canvas.renderAll();
+
+    // A near-black default pen on a near-black canvas draws nothing. Only the
+    // untouched default is swapped; a colour the user chose stays chosen.
+    const { strokeColor, setStrokeColor } = useCanvasStore.getState();
+    const previous = theme === 'dark' ? DEFAULT_STROKE.light : DEFAULT_STROKE.dark;
+    if (strokeColor === previous) setStrokeColor(DEFAULT_STROKE[theme]);
+  }, [theme]);
+
   // ---- Grid background ----
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
+    const line = GRID_LINE[theme];
     const el = canvas.getElement();
     el.style.backgroundImage = gridVisible
-      ? 'linear-gradient(to right, #eee 1px, transparent 1px), linear-gradient(to bottom, #eee 1px, transparent 1px)'
+      ? `linear-gradient(to right, ${line} 1px, transparent 1px), linear-gradient(to bottom, ${line} 1px, transparent 1px)`
       : 'none';
     el.style.backgroundSize = '24px 24px';
-  }, [gridVisible]);
+  }, [gridVisible, theme]);
 
   // ---- Tool behavior (brush settings + shape drawing) ----
   useEffect(() => {
@@ -405,6 +449,9 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
 
       isRemoteUpdate.current = true;
       await canvas.loadFromJSON(structuredClone(to));
+      // Snapshots carry the background colour they were taken with, so undoing
+      // across a theme change would otherwise restore the old one.
+      canvas.backgroundColor = CANVAS_BG[themeRef.current];
       // enlivenObjects gives no guarantee about carrying custom props through,
       // and everything downstream is keyed on objectId. loadFromJSON preserves
       // the snapshot's order, so re-stamp by index rather than trusting it.
@@ -738,6 +785,53 @@ function diffSnapshots(from: Snapshot, to: Snapshot) {
   return { added, updated, deleted, reordered };
 }
 
+/**
+ * A JPEG data URL of everything drawn on the board, cropped to the objects
+ * rather than to whatever the author happened to be looking at. `toDataURL`'s
+ * crop is expressed in screen pixels, so the viewport is flattened to identity
+ * first and put back afterwards.
+ */
+export function thumbnailDataUrl(canvas: fabric.Canvas, maxSize = 240): string {
+  const objects = canvas.getObjects();
+  if (!objects.length) return '';
+
+  const viewport = [...canvas.viewportTransform] as fabric.TMat2D;
+  canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+  try {
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    for (const obj of objects) {
+      const rect = obj.getBoundingRect();
+      left = Math.min(left, rect.left);
+      top = Math.min(top, rect.top);
+      right = Math.max(right, rect.left + rect.width);
+      bottom = Math.max(bottom, rect.top + rect.height);
+    }
+    if (!Number.isFinite(left) || !Number.isFinite(top)) return '';
+
+    const padding = 24;
+    const width = Math.max(1, right - left + padding * 2);
+    const height = Math.max(1, bottom - top + padding * 2);
+    // Never upscale: a two-object board should not become a 240px JPEG of blur.
+    const multiplier = Math.min(maxSize / width, maxSize / height, 1);
+
+    return canvas.toDataURL({
+      format: 'jpeg',
+      quality: 0.5,
+      multiplier,
+      left: left - padding,
+      top: top - padding,
+      width,
+      height,
+    });
+  } finally {
+    canvas.setViewportTransform(viewport);
+    canvas.renderAll();
+  }
+}
+
 export async function exportPNG(canvas: fabric.Canvas, filename: string) {
   const url = canvas.toDataURL({ format: 'png', multiplier: 2 });
   const a = document.createElement('a');
@@ -752,6 +846,26 @@ export async function exportJPEG(canvas: fabric.Canvas, filename: string) {
   a.href = url;
   a.download = `${filename}.jpg`;
   a.click();
+}
+
+/**
+ * jspdf has been a dependency since the first commit without ever being
+ * imported. Loaded on demand so it stays out of the initial bundle -- it is
+ * only reachable from a menu item.
+ */
+export async function exportPDF(canvas: fabric.Canvas, filename: string) {
+  const { jsPDF } = await import('jspdf');
+  const width = canvas.getWidth();
+  const height = canvas.getHeight();
+  const image = canvas.toDataURL({ format: 'png', multiplier: 2 });
+
+  const pdf = new jsPDF({
+    orientation: width >= height ? 'landscape' : 'portrait',
+    unit: 'px',
+    format: [width, height],
+  });
+  pdf.addImage(image, 'PNG', 0, 0, width, height);
+  pdf.save(`${filename}.pdf`);
 }
 
 export function exportJSON(canvas: fabric.Canvas, filename: string) {
