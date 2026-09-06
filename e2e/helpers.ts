@@ -1,3 +1,4 @@
+import { deflateSync } from 'node:zlib';
 import type { Browser, Page } from '@playwright/test';
 import { io, type Socket } from 'socket.io-client';
 import { API_URL } from './config';
@@ -266,4 +267,141 @@ export async function clickOnCanvas(page: Page, at: { x: number; y: number }) {
   const box = await page.locator('canvas.upper-canvas').boundingBox();
   if (!box) throw new Error('Canvas has no bounding box');
   await page.mouse.click(box.x + at.x, box.y + at.y);
+}
+
+// ---------------------------------------------------------------------------
+// Images.
+// ---------------------------------------------------------------------------
+
+const CRC_TABLE = (() => {
+  const table = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c;
+  }
+  return table;
+})();
+
+function crc32(buf: Buffer): number {
+  let c = -1;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ -1) >>> 0;
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([length, body, crc]);
+}
+
+/**
+ * A real, decodable PNG of the requested size, built here rather than checked
+ * in as a fixture — the tests need specific dimensions to assert on scaling,
+ * and a byte-exact size to push past the upload limit.
+ */
+export function makePng(width: number, height: number, fill = [220, 40, 40]): Buffer {
+  const raw = Buffer.alloc((width * 3 + 1) * height);
+  for (let y = 0; y < height; y++) {
+    const row = y * (width * 3 + 1);
+    raw[row] = 0; // filter: none
+    for (let x = 0; x < width; x++) {
+      raw[row + 1 + x * 3] = fill[0];
+      raw[row + 2 + x * 3] = fill[1];
+      raw[row + 3 + x * 3] = fill[2];
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // colour type: truecolour
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/** POSTs a multipart upload directly, for the status codes the UI never shows. */
+export async function uploadRaw(
+  as: TestUser,
+  file: { bytes: Buffer; filename: string; type: string }
+): Promise<{ status: number; body: any }> {
+  const form = new FormData();
+  form.append('image', new Blob([new Uint8Array(file.bytes)], { type: file.type }), file.filename);
+  const res = await fetch(`${API_URL}/api/uploads/image`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${as.token}` },
+    body: form,
+  });
+  const text = await res.text();
+  let body: any = text;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    /* left as text */
+  }
+  return { status: res.status, body };
+}
+
+/** Objects of one Fabric type on this client's canvas, with their geometry. */
+export function canvasImages(page: Page): Promise<
+  { objectId: string; src: string; crossOrigin: string | null; left: number; top: number; scaleX: number; width: number }[]
+> {
+  return page.evaluate(() =>
+    (window as any).__fabricCanvas
+      .getObjects()
+      .filter((o: any) => o.type === 'image')
+      .map((o: any) => ({
+        objectId: o.objectId,
+        src: o.getSrc(),
+        crossOrigin: o.getCrossOrigin(),
+        left: Math.round(o.left),
+        top: Math.round(o.top),
+        scaleX: Number(o.scaleX.toFixed(4)),
+        width: o.width,
+      }))
+  );
+}
+
+/**
+ * Hands a File to the page through a real DataTransfer, so paste and drop go
+ * through the same listeners a user would trigger. Playwright cannot script the
+ * OS clipboard or a drag from the desktop, so the event itself is synthesised —
+ * everything downstream of it is the production path.
+ */
+export async function sendImageEvent(
+  page: Page,
+  kind: 'paste' | 'drop',
+  png: Buffer,
+  at?: { x: number; y: number }
+) {
+  const base64 = png.toString('base64');
+  const rect = at ? await canvasRect(page) : { x: 0, y: 0 };
+  await page.evaluate(
+    async ({ kind, base64, client }) => {
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      const file = new File([bytes], 'pasted.png', { type: 'image/png' });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      const canvas = document.querySelector('canvas.upper-canvas')!;
+      const event =
+        kind === 'paste'
+          ? new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })
+          : new DragEvent('drop', {
+              dataTransfer: dt,
+              bubbles: true,
+              cancelable: true,
+              clientX: client?.x,
+              clientY: client?.y,
+            });
+      (kind === 'paste' ? window : canvas).dispatchEvent(event);
+    },
+    { kind, base64, client: at ? { x: rect.x + at.x, y: rect.y + at.y } : undefined }
+  );
 }

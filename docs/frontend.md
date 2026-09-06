@@ -86,7 +86,7 @@ mount ordering for.
 
 | Component | Role |
 |---|---|
-| `Toolbar` | Floating glass bar, bottom-centre: 13 tool buttons, stroke colour, fill colour, stroke width slider (1–20), undo, redo, grid toggle, comments, history, export, clear canvas. With `canEdit={false}` everything that writes is removed rather than disabled, leaving Select, grid, comments, history and export |
+| `Toolbar` | Floating glass bar, bottom-centre: 13 tool buttons, an insert-image button, stroke colour, fill colour, stroke width slider (1–20), undo, redo, grid toggle, comments, history, export, clear canvas. With `canEdit={false}` everything that writes is removed rather than disabled, leaving Select, grid, comments, history and export. Insert-image is not one of the 13 tools: it does not change the mode, it opens a file picker and puts one object on the board |
 | `PresenceCursors` | Fixed full-screen overlay (`pointer-events-none`) drawing an SVG arrow + name badge per remote socket, in that user's colour. Cursors travel in scene coordinates and are re-projected through this viewer's own viewport, sampled once per animation frame |
 | `CommentsPanel` | Right drawer: loads `GET /comments/:boardId`, appends live via `comment:new`, post box (Enter to send), per-comment resolve toggle. Typing `@` opens an autocomplete over the board roster; mentions are resolved from the text at post time, not accumulated from clicks, so deleting a name back out un-mentions them. Exports `resolveMentions(text, members)`, which is that rule |
 | `NotificationBell` | Header bell with an unread badge, a dropdown of the 50 most recent, mark-one-on-open and mark-all-read. Live via `notification:new` on whatever socket the page already has |
@@ -97,8 +97,8 @@ mount ordering for.
 
 ## The canvas engine — `canvas/CanvasBoard.tsx`
 
-A `forwardRef` component exposing `{ getCanvas(), loadObjects(objects) }` via
-`useImperativeHandle`. Internally a set of focused `useEffect` blocks:
+A `forwardRef` component exposing `{ getCanvas(), loadObjects(objects), addImage(file, at?) }`
+via `useImperativeHandle`. Internally a set of focused `useEffect` blocks:
 
 0. **Read-only** — when `readOnly` is set, every object is made `selectable: false,
    evented: false`, the active selection is discarded, and the shape, click-placement and
@@ -135,6 +135,16 @@ A `forwardRef` component exposing `{ getCanvas(), loadObjects(objects) }` via
 9. **Shortcuts** — `Delete`/`Backspace` (multi-select aware, ignored while editing text),
    `Ctrl+Z` undo, `Ctrl+Y` / `Ctrl+Shift+Z` redo, `Ctrl+D` duplicate at +20/+20 offset,
    `]` bring to front, `[` send to back.
+10. **Paste & drop** — a `paste` listener on the window (the canvas is a bitmap and never
+    holds focus) and `dragover`/`drop` on the container. Both filter for a supported image
+    and hand it to `addImage`; both bail out for a viewer. The paste listener steps aside
+    while a `Textbox` is being edited, where the paste belongs to the text. `dragover` has
+    to `preventDefault`, or dropping a PNG on the board navigates the tab to the PNG.
+
+`addImage(file, at?)` is the single path behind the toolbar picker, a paste and a drop, so
+all three agree on what is accepted, how it is scaled and where it lands. `at` is a **scene**
+point — a drop has to land where it was dropped, not where the dropper happened to be panned
+to. Without one (the picker, a paste) the image is centred in the current viewport.
 
 **History** is a snapshot stack: every mutation pushes `serializeCanvas(canvas)` —
 `canvas.toObject(['objectId', 'zIndex'])` — truncating any redo tail, capped at 100 entries.
@@ -154,6 +164,28 @@ Two supporting rules make that safe:
   `canvas.toJSON(['objectId'])` produced anonymous snapshots. Anything that serializes the
   canvas goes through `serializeCanvas` now.
 
+## Images — `canvas/images.ts`
+
+Kept out of `CanvasBoard` because the upload, the size rules and the transfer parsing are
+all testable on their own.
+
+| Export | What it is |
+|---|---|
+| `uploadImage(file)` | `POST /uploads/image`, returning the absolute URL to place. Resolves the response's relative `path` against the client's own API origin rather than trusting the absolute `url` the server built from a client-supplied `Host` header |
+| `createImage(url, at)` | A `FabricImage` centred on `at`, scaled down so its longest edge is at most 480 px — never up, so a 32 px icon arrives 32 px |
+| `imageFromTransfer(dt)` | The first supported image in a paste or a drop. Checks `files` *and* `items`: a dragged file appears in `files`, while a screenshot pasted from the system clipboard is an `item` of kind `file` and may not appear in `files` at all |
+| `transferHasFiles(dt)` | The only thing readable during `dragover` |
+| `viewportCentre(canvas)` | The centre of what the viewer is looking at, in scene coordinates |
+
+**`crossOrigin: 'anonymous'` is the load-bearing line here.** Uploads are served from the
+API origin, which is never the client's. Drawing a cross-origin image without CORS *taints*
+the canvas, and every `toDataURL` after it throws a `SecurityError` — which is all that PNG,
+JPEG and PDF export and the dashboard thumbnail are. One image would have silently killed
+all four, permanently, on any board that ever held one. Fabric serializes `crossOrigin`
+alongside `src` and passes it back to `loadImage`, so it survives the trip to other clients;
+the server's side of the bargain is the `Access-Control-Allow-Origin` that `cors()` already
+puts on `/uploads`.
+
 **Exported helpers**:
 - `toScenePoint(canvas, event)` / `toViewportPoint(vpt, point)` — screen ↔ scene conversion,
   used by `PresenceCursors` in both directions. Written in the general matrix form
@@ -167,6 +199,12 @@ Two supporting rules make that safe:
 - `exportPNG` / `exportJPEG` — `toDataURL` at `multiplier: 2` (JPEG at quality 0.9),
   triggered via a synthetic `<a download>`
 - `exportPDF` — `jspdf` at page size = canvas size, imported dynamically
+- `TAINTED_CANVAS_MESSAGE` — every read of the canvas pixels goes through one internal
+  `readPixels` helper that catches the `SecurityError` a tainted canvas throws. Our own
+  images cannot cause it, but a board holds objects other people put there, and one image
+  from somewhere else should not take export down with it. The exporters throw this message,
+  which `BoardEditor` shows as a line of text; `thumbnailDataUrl` returns `''`, which its
+  caller already skips
 - `exportJSON` — pretty-printed canvas JSON as a Blob download
 
 Helper factories `makeStickyNote(x, y)` and `makeStar(...)` (5-spike polygon, outer radius

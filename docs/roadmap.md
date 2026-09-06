@@ -310,13 +310,49 @@ simply never fired.
 Eleven tests in `e2e/notifications.spec.ts`, verified against twelve mutations. Every test
 is killed by at least one, and the ten targeted mutations each kill exactly one.
 
-### Sprint 9 — Images · 45 min
+### ~~Sprint 9 — Images~~ · done
 
-- Image tool → `POST /uploads/image` → drop a `fabric.Image` on the canvas
-- Paste from clipboard and drag-and-drop
+Insert from the toolbar, paste from the clipboard, drag and drop onto the board. All three
+go through one `addImage(file, at?)`, so they agree on what is accepted, how it is scaled
+(down to a 480 px longest edge, never up) and where it lands. A drop lands at the drop point
+in **scene** coordinates — the same rule Sprint 6 established for cursors.
 
-⚠ Uploads land on the container filesystem. On Render's free tier they vanish on every
-restart — move to S3 or Cloudinary before this counts as done in production.
+The roadmap called this a client task on an endpoint that already worked. Calling that
+endpoint for the first time is what showed it had never been called:
+
+- **The stored extension came from the uploaded filename.** `path.extname(originalname)`,
+  with the type checked only against `file.mimetype` — a header the same client writes. A
+  file named `evil.html` and declared `image/png` was written into a statically served
+  directory as `<id>.html` and handed back as `text/html`, on the API's own origin. The
+  extension now comes from the media type allowlist and nothing else.
+- **Rejected and oversized uploads were `500`s.** Multer reports both through `next(err)`,
+  which reached the generic handler. Now `400` and `413`.
+- **helmet's `Cross-Origin-Resource-Policy: same-origin` covers `/uploads` too.** The canvas
+  turns out to be immune — it loads images in CORS mode, which CORP does not govern — but a
+  plain `<img src>` from the client origin fails to load outright. The directory exists to
+  be read from another origin, so it now says so.
+
+And the one that would have been silent: **a cross-origin image drawn without CORS taints
+the canvas**, and every `toDataURL` after it throws. That is PNG, JPEG and PDF export plus
+the dashboard thumbnail — four features, killed permanently, by one image, with nothing in
+the UI to say why. Images load with `crossOrigin: 'anonymous'`; Fabric serializes that next
+to `src`, so a receiving client re-loads it the same way rather than tainting its own canvas.
+Every read of the pixels also goes through one guard now, because a board holds objects
+other people put there.
+
+Eleven tests in `e2e/images.spec.ts`, verified against thirteen mutations; every test is
+killed by at least one. One survived: removing *either* read-only guard in `addImage` on its
+own changes nothing, because the other one still stops it — the check before the upload and
+the check after it are each sufficient. Removing both is killed by the viewer test. They are
+both kept deliberately: the first saves a pointless 10 MB round trip, the second catches a
+demotion that lands while the upload is in flight. The second is not independently testable
+without racing the network, so it is not.
+
+⚠ Still true: uploads land on the container filesystem, and on Render's free tier they
+vanish on every restart. Nothing here changes that — the boards will keep the `src`, the
+file behind it will be gone. Move to S3 or Cloudinary before this counts as done in
+production. `POST /uploads/image` is also authenticated but not board-scoped, and nothing
+ever deletes a file; both are worth solving in the same pass.
 
 ### Sprint 10 — Performance under load · 70 min
 

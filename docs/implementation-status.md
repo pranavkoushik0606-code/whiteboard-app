@@ -1,6 +1,6 @@
 # Implementation status
 
-An honest inventory, current through Sprint 8. "Working" means the full path exists —
+An honest inventory, current through Sprint 9. "Working" means the full path exists —
 UI → API/socket → database — not just that a schema field or endpoint is present.
 
 ## Working end to end
@@ -62,6 +62,12 @@ UI → API/socket → database — not just that a schema field or endpoint is p
 - `@` autocomplete over the board roster; mentions are highlighted in the posted text and
   fan out as notifications
 
+**Images**
+- Insert from the toolbar, paste from the clipboard, or drag and drop onto the board
+- Scaled down to a 480 px longest edge; a drop lands at the drop point in scene coordinates
+- Loaded with CORS so the canvas stays exportable, and served with the headers that makes
+  possible
+
 **Notifications**
 - Header bell with an unread badge, on the dashboard and in the editor
 - Delivered live over a per-user socket room, so an invite lands without a reload
@@ -84,7 +90,6 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
 
 | Capability | Backend | Missing piece |
 |---|---|---|
-| Image upload | `POST /api/uploads/image` (Multer, 10 MB, image MIME allowlist) + static `/uploads` | no image tool in the toolbar, no upload control |
 | Comment pinning / threads | `x`, `y`, `parentComment` on the model | panel always posts `x: 0, y: 0` and renders a flat list |
 | In-progress stroke streaming | `draw:stream` relay | nothing emits or listens; remote users only see a stroke once it is finished |
 | Live text editing | `text:edit` relay | nothing emits or listens |
@@ -188,6 +193,23 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
    on top of the existing notifications endpoint.~~ Done in Sprints 7 and 8. Neither turned
    out to be "pure frontend": reading a field for the first time is what tells you nothing
    was ever validating it.
-6. Add an image tool that posts to `/uploads/image` and drops a `fabric.Image` on the canvas.
+6. ~~Add an image tool that posts to `/uploads/image` and drops a `fabric.Image` on the
+   canvas.~~ Done in Sprint 9. The endpoint had been sitting there unused since the first
+   commit, and calling it for the first time is what surfaced the stored-XSS extension bug
+   and the two `500`s.
+6a. **Shape and text placement still uses viewport coordinates, not scene coordinates.**
+   `mouse:down` in the shape and click-placement effects reads `canvas.getViewportPoint(e)`
+   and assigns the result straight to `left`/`top`, which are scene coordinates. On an
+   unpanned, unzoomed board the two are equal, which is why this has never been visible.
+   Pan or zoom first and a shape lands somewhere other than where you clicked. Sprint 6
+   fixed exactly this class of bug for cursors and Sprint 9 avoided it for image drops
+   (`toScenePoint`); the shape tools were not in scope for either. The fix is
+   `canvas.getScenePoint(e)` — safe here, unlike in an independent window listener, because
+   these run inside Fabric's own event handling.
+6b. **Uploads are authenticated but not board-scoped.** `POST /uploads/image` takes a JWT
+   and nothing else, so any signed-in user can fill the disk, and a viewer can upload a file
+   they are not allowed to place. Nothing is ever deleted either — removing an image from a
+   board leaves the file. Worth solving together with moving off the container filesystem
+   (see setup-and-deployment), not before.
 7. Emit `object:reorder` from the `[` / `]` shortcuts.
 8. Install and configure eslint, or drop the `lint` script.

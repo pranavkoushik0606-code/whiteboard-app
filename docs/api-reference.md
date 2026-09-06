@@ -172,12 +172,32 @@ Tokens are `jwt.sign({ id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN || '7d' })`
 
 | Method | Path | Auth | Body | Returns |
 |---|---|---|---|---|
-| POST | `/image` | JWT | `multipart/form-data`, field `image` | `201 { url }` |
+| POST | `/image` | JWT | `multipart/form-data`, field `image` | `201 { url, path }` |
 
-Multer disk storage into `server/uploads/`, filename `<timestamp>-<random>.<ext>`.
-Accepts `image/png|jpeg|jpg|gif|webp` only, max 10 MB. The returned `url` is
-`${protocol}://${host}/uploads/<filename>`; the directory is served statically by
-`express.static`. **No client code calls this endpoint yet.**
+Multer disk storage into `server/uploads/`, filename `<uuid><ext>`. Accepts
+`image/png|jpeg|jpg|gif|webp` only, max 10 MB.
+
+- **The extension comes from the media type, never from the filename.** It used to be
+  `path.extname(file.originalname)`, which let the caller choose it: a file named
+  `evil.html` and declared `image/png` was stored as `<id>.html` and handed back by
+  `express.static` as `text/html`. That is stored XSS on the API's own origin — the origin
+  every session token is sent to.
+- A rejected type is a `400` and an oversized file a `413`. Both used to reach the generic
+  error handler as a `500`, which made "your image is too big" indistinguishable from "the
+  server fell over".
+- `path` is the relative `/uploads/<filename>`; `url` prefixes it with `PUBLIC_URL`, or with
+  the request's own `protocol://host` when that is unset. Clients should prefer `path` and
+  resolve it against the API origin they already know: the `Host` header is client-supplied,
+  and this URL does not stay with the uploader — it is written into the Fabric object's
+  `src` and then loaded by every other member of the board.
+
+`/uploads` is served by `express.static` with three response headers set explicitly:
+
+| Header | Why |
+|---|---|
+| `Cross-Origin-Resource-Policy: cross-origin` | helmet defaults this to `same-origin`, and the client is never on this origin. The canvas is unaffected — it loads images in CORS mode, which CORP does not govern — but a plain `<img src>` pointed at an upload fails to load outright |
+| `X-Content-Type-Options: nosniff` | behind the extension allowlist: whatever is in there is served as the type its extension says, and nothing else |
+| `Content-Security-Policy: default-src 'none'; sandbox` | neutralises anything that slipped through and got interpreted as a document |
 
 ---
 

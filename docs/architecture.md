@@ -13,7 +13,7 @@
 | Realtime | Socket.io 4 |
 | DB | MongoDB 7 via Mongoose 8 |
 | Auth | JWT (`jsonwebtoken`) + bcryptjs |
-| Files | Multer → local disk `server/uploads/`, served statically at `/uploads` |
+| Files | Multer → local disk `server/uploads/`, served statically at `/uploads` with `Cross-Origin-Resource-Policy: cross-origin` |
 | Email | Nodemailer → Ethereal auto-provisioned test inbox |
 
 ## Two transports, one canvas

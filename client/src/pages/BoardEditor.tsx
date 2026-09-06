@@ -6,6 +6,7 @@ import { useSocket } from '../hooks/useSocket';
 import { useAuthStore } from '../store/useAuthStore';
 import { useCanvasStore } from '../store/useCanvasStore';
 import CanvasBoard, { CanvasBoardHandle, exportPNG, exportJPEG, exportPDF, exportJSON } from '../canvas/CanvasBoard';
+import { IMAGE_ACCEPT } from '../canvas/images';
 import Toolbar from '../components/Toolbar';
 import PresenceCursors from '../components/PresenceCursors';
 import CommentsPanel from '../components/CommentsPanel';
@@ -18,6 +19,7 @@ export default function BoardEditor() {
   const { boardId } = useParams<{ boardId: string }>();
   const navigate = useNavigate();
   const canvasHandleRef = useRef<CanvasBoardHandle>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const socketRef = useSocket(boardId);
 
   const [board, setBoard] = useState<any>(null);
@@ -31,6 +33,9 @@ export default function BoardEditor() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [clearing, setClearing] = useState(false);
+  // One line of transient status for the things that happen off-screen:
+  // uploading an image, and an export that could not read the canvas.
+  const [notice, setNotice] = useState<string | null>(null);
   // The API has always returned this; nothing used it until now, so a viewer
   // got the full editor and found out it did nothing only after drawing.
   const [role, setRole] = useState<'owner' | 'editor' | 'viewer'>('viewer');
@@ -73,6 +78,28 @@ export default function BoardEditor() {
   const commitTitle = async () => {
     setEditingTitle(false);
     if (boardId && title.trim()) await api.put(`/boards/${boardId}`, { title: title.trim() });
+  };
+
+  /**
+   * Export reads the canvas pixels back, which throws if anything on the board
+   * tainted it. Every entry point goes through here so that arrives as a line
+   * of text rather than an unhandled rejection in the console.
+   */
+  const runExport = async (run: () => Promise<void>) => {
+    try {
+      await run();
+    } catch (err: any) {
+      setNotice(err?.message || 'That export failed.');
+    }
+  };
+
+  const pickImage = () => imageInputRef.current?.click();
+
+  const onImageChosen = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Cleared so choosing the same file twice in a row still fires `change`.
+    e.target.value = '';
+    if (file) canvasHandleRef.current?.addImage(file);
   };
 
   const dispatchShortcut = (key: string) => {
@@ -209,7 +236,33 @@ export default function BoardEditor() {
           gridVisible={gridVisible}
           readOnly={!canEdit}
           onThumbnail={handleThumbnail}
+          onNotice={setNotice}
         />
+
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept={IMAGE_ACCEPT}
+          onChange={onImageChosen}
+          data-testid="image-input"
+          className="hidden"
+        />
+
+        {notice && (
+          <div
+            data-testid="board-notice"
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-40 max-w-[90vw] px-4 py-2 rounded-xl bg-neutral-900 text-white text-sm shadow-lg dark:bg-neutral-100 dark:text-neutral-900"
+          >
+            {notice}
+            <button
+              title="Dismiss notice"
+              onClick={() => setNotice(null)}
+              className="ml-3 opacity-60 hover:opacity-100"
+            >
+              ×
+            </button>
+          </div>
+        )}
         <PresenceCursors
           socket={socketRef.current}
           boardId={boardId!}
@@ -223,6 +276,7 @@ export default function BoardEditor() {
           onHistoryClick={() => setShowHistory(true)}
           onCommentsClick={() => setShowComments(true)}
           onClearClick={() => setShowClearConfirm(true)}
+          onImageClick={pickImage}
           canEdit={canEdit}
         />
 
@@ -267,15 +321,15 @@ export default function BoardEditor() {
             onClose={() => setShowExport(false)}
             onExportPNG={() => {
               const c = canvasHandleRef.current?.getCanvas();
-              if (c) exportPNG(c, title);
+              if (c) runExport(() => exportPNG(c, title));
             }}
             onExportJPEG={() => {
               const c = canvasHandleRef.current?.getCanvas();
-              if (c) exportJPEG(c, title);
+              if (c) runExport(() => exportJPEG(c, title));
             }}
             onExportPDF={() => {
               const c = canvasHandleRef.current?.getCanvas();
-              if (c) exportPDF(c, title);
+              if (c) runExport(() => exportPDF(c, title));
             }}
             onExportJSON={() => {
               const c = canvasHandleRef.current?.getCanvas();

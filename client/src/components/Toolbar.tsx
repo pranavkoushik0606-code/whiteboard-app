@@ -1,6 +1,7 @@
 import {
   MousePointer2, Pencil, Highlighter, Eraser, Square, Circle, Triangle, Diamond, Star,
-  ArrowRight, Minus, Type, StickyNote, Undo2, Redo2, Grid3x3, Download, History, MessageSquare, Trash2,
+  ArrowRight, Minus, Type, StickyNote, Image as ImageIcon, Undo2, Redo2, Grid3x3, Download,
+  History, MessageSquare, Trash2,
 } from 'lucide-react';
 import { useCanvasStore, ToolType } from '../store/useCanvasStore';
 
@@ -11,6 +12,7 @@ interface Props {
   onHistoryClick: () => void;
   onCommentsClick: () => void;
   onClearClick: () => void;
+  onImageClick: () => void;
   /** False for a viewer: every control that writes to the board is dropped. */
   canEdit?: boolean;
 }
@@ -32,7 +34,8 @@ const tools: { id: ToolType; icon: React.ReactNode; label: string }[] = [
 ];
 
 export default function Toolbar({
-  onUndo, onRedo, onExportClick, onHistoryClick, onCommentsClick, onClearClick, canEdit = true,
+  onUndo, onRedo, onExportClick, onHistoryClick, onCommentsClick, onClearClick, onImageClick,
+  canEdit = true,
 }: Props) {
   const { tool, setTool, strokeColor, setStrokeColor, fillColor, setFillColor, strokeWidth, setStrokeWidth, gridVisible, toggleGrid } =
     useCanvasStore();
@@ -60,6 +63,14 @@ export default function Toolbar({
 
       {canEdit && (
         <>
+          <button
+            title="Insert image"
+            onClick={onImageClick}
+            className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          >
+            <ImageIcon size={18} />
+          </button>
+
           <div className="w-px h-6 bg-neutral-300 dark:bg-neutral-700 mx-1" />
 
           <input

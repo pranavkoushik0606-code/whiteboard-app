@@ -4,6 +4,15 @@ import { v4 as uuid } from 'uuid';
 import { Socket } from 'socket.io-client';
 import { useCanvasStore, ToolType } from '../store/useCanvasStore';
 import { useTheme } from '../context/ThemeContext';
+import {
+  MAX_IMAGE_BYTES,
+  createImage,
+  imageFromTransfer,
+  isSupportedImage,
+  transferHasFiles,
+  uploadImage,
+  viewportCentre,
+} from './images';
 
 interface Props {
   boardId: string;
@@ -19,6 +28,12 @@ interface Props {
   readOnly?: boolean;
   /** Called once with a JPEG data URL just before the canvas is disposed. */
   onThumbnail?: (dataUrl: string) => void;
+  /**
+   * Somewhere to say "uploading", "that file is too big", "the export failed".
+   * Owned by the page rather than the canvas so an export started from the
+   * header lands in the same place as a failed paste.
+   */
+  onNotice?: (message: string | null) => void;
 }
 
 // The canvas is a bitmap, not a themed DOM node, so its background and grid have
@@ -44,6 +59,8 @@ function withAlpha(color: string, alpha: number): string {
 export interface CanvasBoardHandle {
   getCanvas: () => fabric.Canvas | null;
   loadObjects: (objects: any[]) => void;
+  /** Uploads and places a file. `at` is a scene point; omitted means centred. */
+  addImage: (file: File, at?: { x: number; y: number }) => Promise<void>;
 }
 
 // Custom properties Fabric knows nothing about but the whole sync path is keyed
@@ -96,11 +113,12 @@ function bottomZ(canvas: fabric.Canvas) {
 }
 
 const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
-  { boardId, socket, initialObjects, gridVisible, readOnly = false, onThumbnail },
+  { boardId, socket, initialObjects, gridVisible, readOnly = false, onThumbnail, onNotice },
   ref
 ) {
   const { theme } = useTheme();
   const canvasElRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const isRemoteUpdate = useRef(false);
   const historyRef: HistoryRef = useRef<{ stack: Snapshot[]; index: number }>({ stack: [], index: -1 });
@@ -115,8 +133,10 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
   // Held in a ref so a new callback identity never re-runs the init effect,
   // which would tear the canvas down and rebuild it.
   const onThumbnailRef = useRef(onThumbnail);
+  const onNoticeRef = useRef(onNotice);
   useEffect(() => {
     onThumbnailRef.current = onThumbnail;
+    onNoticeRef.current = onNotice;
   });
 
   useImperativeHandle(ref, () => ({
@@ -130,6 +150,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
       // A wholesale replacement invalidates every snapshot taken before it.
       resetHistory(canvas, historyRef);
     },
+    addImage,
   }));
 
   // ---- Init canvas ----
@@ -460,6 +481,92 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     [socket, boardId]
   );
 
+  // ---- Images ----
+  /**
+   * Upload, then place. Same path for the toolbar's file picker, a paste and a
+   * drop, so all three agree on what is accepted, how it is scaled and where it
+   * lands. `at` is a *scene* point: the drop target has to survive the fact
+   * that the person who dropped it may be panned somewhere nobody else is.
+   */
+  const addImage = useCallback(
+    async (file: File, at?: { x: number; y: number }) => {
+      const canvas = fabricRef.current;
+      if (!canvas || readOnlyRef.current) return;
+      if (!isSupportedImage(file)) {
+        onNoticeRef.current?.('Images have to be PNG, JPEG, GIF or WebP.');
+        return;
+      }
+      // Checked here as well as on the server, so a 10 MB upload is not spent
+      // finding out. The server is still the one that decides.
+      if (file.size > MAX_IMAGE_BYTES) {
+        onNoticeRef.current?.(`Images have to be under ${MAX_IMAGE_BYTES / (1024 * 1024)} MB.`);
+        return;
+      }
+
+      onNoticeRef.current?.('Uploading image\u2026');
+      try {
+        const url = await uploadImage(file);
+        const live = fabricRef.current;
+        // The upload is a round trip; the board may be gone, or the role may
+        // have changed underneath it, by the time it comes back.
+        if (!live || readOnlyRef.current) return;
+        const image = withMeta(await createImage(url, at ?? viewportCentre(live)));
+        live.add(image);
+        live.setActiveObject(image);
+        live.renderAll();
+        emitAdd(image);
+        pushHistory(live, historyRef);
+        onNoticeRef.current?.(null);
+      } catch (err: any) {
+        onNoticeRef.current?.(
+          err?.response?.data?.message || 'That image could not be uploaded.'
+        );
+      }
+    },
+    [emitAdd]
+  );
+
+  // Paste and drag-and-drop. `paste` has to be on the window -- the canvas is a
+  // bitmap and never holds focus -- so it steps aside while a Textbox is being
+  // edited, where the paste belongs to the text.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onPaste = (e: ClipboardEvent) => {
+      if (readOnlyRef.current) return;
+      if ((fabricRef.current?.getActiveObject() as any)?.isEditing) return;
+      const file = imageFromTransfer(e.clipboardData);
+      if (!file) return;
+      e.preventDefault();
+      addImage(file);
+    };
+
+    // Without preventDefault here the browser handles the drop itself, and
+    // "drop a PNG on the board" navigates away to the PNG.
+    const onDragOver = (e: DragEvent) => {
+      if (transferHasFiles(e.dataTransfer)) e.preventDefault();
+    };
+
+    const onDrop = (e: DragEvent) => {
+      if (readOnlyRef.current) return;
+      const file = imageFromTransfer(e.dataTransfer);
+      if (!file) return;
+      e.preventDefault();
+      const canvas = fabricRef.current;
+      addImage(file, canvas ? toScenePoint(canvas, e) : undefined);
+    };
+
+    window.addEventListener('paste', onPaste);
+    container.addEventListener('dragover', onDragOver);
+    container.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('paste', onPaste);
+      container.removeEventListener('dragover', onDragOver);
+      container.removeEventListener('drop', onDrop);
+    };
+  }, [addImage]);
+
   // ---- Undo / redo ----
   /**
    * Moves the history cursor and tells everyone else what changed. Undo used to
@@ -695,7 +802,10 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
   }, [emitAdd, emitDelete, emitReorder, undo, redo]);
 
   return (
-    <div className="flex-1 overflow-hidden relative bg-neutral-50 dark:bg-neutral-900">
+    <div
+      ref={containerRef}
+      className="flex-1 overflow-hidden relative bg-neutral-50 dark:bg-neutral-900"
+    >
       <canvas ref={canvasElRef} />
     </div>
   );
@@ -876,6 +986,27 @@ export function toViewportPoint(
 }
 
 /**
+ * What a tainted canvas costs, and why every read of the pixels goes through
+ * here. Drawing a cross-origin image without CORS taints the canvas, and from
+ * then on `toDataURL` throws a SecurityError rather than returning anything.
+ *
+ * Our own uploads are loaded with `crossOrigin: 'anonymous'` and served with
+ * the matching headers, so this should not fire — but a board holds objects
+ * other people put there, and one image from somewhere else should not take
+ * export and the dashboard thumbnail down with it.
+ */
+export const TAINTED_CANVAS_MESSAGE =
+  'This board holds an image that blocks exporting. Re-add it from your own device to fix it.';
+
+function readPixels(canvas: fabric.Canvas, options: any): string | null {
+  try {
+    return canvas.toDataURL(options);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A JPEG data URL of everything drawn on the board, cropped to the objects
  * rather than to whatever the author happened to be looking at. `toDataURL`'s
  * crop is expressed in screen pixels, so the viewport is flattened to identity
@@ -907,15 +1038,17 @@ export function thumbnailDataUrl(canvas: fabric.Canvas, maxSize = 240): string {
     // Never upscale: a two-object board should not become a 240px JPEG of blur.
     const multiplier = Math.min(maxSize / width, maxSize / height, 1);
 
-    return canvas.toDataURL({
-      format: 'jpeg',
-      quality: 0.5,
-      multiplier,
-      left: left - padding,
-      top: top - padding,
-      width,
-      height,
-    });
+    return (
+      readPixels(canvas, {
+        format: 'jpeg',
+        quality: 0.5,
+        multiplier,
+        left: left - padding,
+        top: top - padding,
+        width,
+        height,
+      }) || ''
+    );
   } finally {
     canvas.setViewportTransform(viewport);
     canvas.renderAll();
@@ -923,7 +1056,8 @@ export function thumbnailDataUrl(canvas: fabric.Canvas, maxSize = 240): string {
 }
 
 export async function exportPNG(canvas: fabric.Canvas, filename: string) {
-  const url = canvas.toDataURL({ format: 'png', multiplier: 2 });
+  const url = readPixels(canvas, { format: 'png', multiplier: 2 });
+  if (!url) throw new Error(TAINTED_CANVAS_MESSAGE);
   const a = document.createElement('a');
   a.href = url;
   a.download = `${filename}.png`;
@@ -931,7 +1065,8 @@ export async function exportPNG(canvas: fabric.Canvas, filename: string) {
 }
 
 export async function exportJPEG(canvas: fabric.Canvas, filename: string) {
-  const url = canvas.toDataURL({ format: 'jpeg', quality: 0.9, multiplier: 2 });
+  const url = readPixels(canvas, { format: 'jpeg', quality: 0.9, multiplier: 2 });
+  if (!url) throw new Error(TAINTED_CANVAS_MESSAGE);
   const a = document.createElement('a');
   a.href = url;
   a.download = `${filename}.jpg`;
@@ -947,7 +1082,8 @@ export async function exportPDF(canvas: fabric.Canvas, filename: string) {
   const { jsPDF } = await import('jspdf');
   const width = canvas.getWidth();
   const height = canvas.getHeight();
-  const image = canvas.toDataURL({ format: 'png', multiplier: 2 });
+  const image = readPixels(canvas, { format: 'png', multiplier: 2 });
+  if (!image) throw new Error(TAINTED_CANVAS_MESSAGE);
 
   const pdf = new jsPDF({
     orientation: width >= height ? 'landscape' : 'portrait',

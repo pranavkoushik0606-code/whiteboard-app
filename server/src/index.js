@@ -54,8 +54,29 @@ const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, skip: skipRat
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/signup', authLimiter);
 
-// Static file serving for locally uploaded images
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Static file serving for locally uploaded images.
+//
+// helmet's default `Cross-Origin-Resource-Policy: same-origin` applies to these
+// too, and the client is never on this origin -- not in production, and not in
+// development either, where it is a Vite server on another port. The canvas
+// happens to be immune, because it loads images in CORS mode (`crossOrigin:
+// 'anonymous'`, which it needs anyway) and CORP only governs `no-cors` loads.
+// Everything else is not: a plain `<img src>` pointed at an upload from the
+// client origin fails to load outright. Serving this directory to one origin
+// and no other is the whole point of it.
+//
+// The rest is defence behind the extension allowlist in uploadRoutes: whatever
+// ends up in here is a file to be looked at, never a document this origin runs.
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, '../uploads'), {
+    setHeaders: (res) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    },
+  })
+);
 
 // ---- Routes ----
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));

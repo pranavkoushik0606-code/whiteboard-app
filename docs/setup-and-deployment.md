@@ -53,6 +53,7 @@ reachable database.
 | `JWT_SECRET` | — | **required**; no fallback, tokens can't be signed without it |
 | `JWT_EXPIRES_IN` | `7d` | |
 | `EMAIL_FROM` | `noreply@whiteboard.dev` | only matters once a real SMTP provider replaces Ethereal |
+| `PUBLIC_URL` | the request's own `protocol://host` | origin used to build the absolute URL returned by the image upload. Worth setting in production: the fallback reads a client-supplied `Host` header, and that URL ends up as an object's `src` on a shared board |
 
 **`client/.env`**
 
@@ -125,9 +126,16 @@ catch-all rewrite to `/index.html` so client-side routes deep-link correctly.
 3. **Vercel** — import the `client/` directory; set `VITE_API_URL` and `VITE_SOCKET_URL` to
    the Render URL.
 4. **Uploads** — Render's free tier has an ephemeral filesystem, so `server/uploads/` is
-   wiped on every deploy/restart. Move to object storage (S3/Cloudinary) before relying on
-   image upload in production: swap the Multer disk storage in
-   `server/src/routes/uploadRoutes.js` for `multer-storage-cloudinary` or an S3 storage engine.
+   wiped on every deploy/restart. Since Sprint 9 the client actually puts images on boards,
+   so this now has a visible consequence: the board keeps the object and its `src`, and the
+   file behind it is gone after the next restart. Move to object storage (S3/Cloudinary)
+   before relying on image upload in production: swap the Multer disk storage in
+   `server/src/routes/uploadRoutes.js` for `multer-storage-cloudinary` or an S3 storage
+   engine. Keep the extension allowlist when you do — it is what stops the bucket serving a
+   caller-named `.html`. Two related gaps are worth closing in the same pass: the endpoint is
+   authenticated but not board-scoped, and nothing ever deletes a file.
+   Set `PUBLIC_URL` to the API's own origin while you are there, so the returned absolute
+   URL does not come from a request header.
 5. **Email** — replace the Ethereal transporter in `server/src/utils/sendEmail.js` with a
    real provider (SES, SendGrid, Resend…) and **delete the `devPreviewUrl` field** from the
    forgot-password response in `authController.js`.
