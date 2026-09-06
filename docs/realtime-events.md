@@ -26,7 +26,10 @@ client-supplied `boardId`, so each one is checked independently:
   (`object:*`, `draw:stream`, `text:edit`, `comment:new`) require `editor`; `cursor:move`
   requires `viewer`. A denied event emits `error:auth` and does nothing else.
 
-Roles are cached at join time rather than re-queried per event, because `cursor:move`
+A role change made over REST is pushed into that cache by `syncBoardRole`, so demoting
+or removing someone who is currently sitting in the board takes effect on their next
+event rather than on their next reconnect. The cache is still what every handler reads;
+nothing re-queries the database per event, because `cursor:move`
 alone runs ~25×/second. The trade-off: revoking someone's access takes effect on their
 next reconnect, not mid-session.
 
@@ -70,6 +73,7 @@ per-process — a multi-instance deployment needs the Redis adapter for this to 
 | `object:reordered` | `{ objectId, zIndex }` | `CanvasBoard` |
 | `board:restored` | `{ boardId, versionId, by, objects }` — emitted by `POST /versions/:id/restore`, not by a socket event | `BoardEditor` (reloads the canvas; skips its own echo by comparing `by`) |
 | `board:cleared` | `{ boardId, by }` — emitted by `DELETE /canvas/:id/objects` | `BoardEditor` (empties the canvas; skips its own echo) |
+| `board:role` | `{ boardId, role }` — `role` is null when access was removed. Emitted to that user's sockets only, by the member routes | `BoardEditor` (flips to read-only, or leaves for the dashboard) |
 | `draw:stream` | `{ strokeId, points, by }` | *nothing yet* |
 | `text:edit` | `{ objectId, text, by }` | *nothing yet* |
 | `comment:new` | the comment | `CommentsPanel` |

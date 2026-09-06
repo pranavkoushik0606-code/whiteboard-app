@@ -13,6 +13,7 @@ import { fileURLToPath } from 'url';
 import { connectDB } from './config/db.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 import { initSocket } from './socket/socketHandler.js';
+import { migrateFavorites } from './services/favoriteMigration.js';
 
 import authRoutes from './routes/authRoutes.js';
 import boardRoutes from './routes/boardRoutes.js';
@@ -77,6 +78,9 @@ app.set('io', io);
 
 const PORT = process.env.PORT || 5000;
 
-connectDB().then(() => {
-  server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-});
+connectDB()
+  .then(() => migrateFavorites())
+  .then(({ migrated }) => {
+    if (migrated) console.log(`[migration] moved ${migrated} favourite(s) off Board`);
+    server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  });

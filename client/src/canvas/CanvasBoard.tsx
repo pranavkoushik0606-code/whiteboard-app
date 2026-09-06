@@ -10,6 +10,13 @@ interface Props {
   socket: Socket | null;
   initialObjects: any[];
   gridVisible: boolean;
+  /**
+   * Viewers get a canvas they can look at, pan and zoom, but not touch. The
+   * server already refuses their mutations, so without this they would draw
+   * things that exist only for them until they reload — which is worse than
+   * being stopped, because it looks like it worked.
+   */
+  readOnly?: boolean;
   /** Called once with a JPEG data URL just before the canvas is disposed. */
   onThumbnail?: (dataUrl: string) => void;
 }
@@ -89,7 +96,7 @@ function bottomZ(canvas: fabric.Canvas) {
 }
 
 const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
-  { boardId, socket, initialObjects, gridVisible, onThumbnail },
+  { boardId, socket, initialObjects, gridVisible, readOnly = false, onThumbnail },
   ref
 ) {
   const { theme } = useTheme();
@@ -102,6 +109,9 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
   const startPointRef = useRef<{ x: number; y: number } | null>(null);
   const hydratedRef = useRef(false);
   const themeRef = useRef(theme);
+  // Read inside canvas event handlers, which are bound once and would otherwise
+  // close over a stale value when a role changes mid-session.
+  const readOnlyRef = useRef(readOnly);
   // Held in a ref so a new callback identity never re-runs the init effect,
   // which would tear the canvas down and rebuild it.
   const onThumbnailRef = useRef(onThumbnail);
@@ -116,6 +126,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
       if (!canvas) return;
       canvas.clear();
       await hydrate(canvas, objects);
+      applyReadOnly(canvas, readOnlyRef.current);
       // A wholesale replacement invalidates every snapshot taken before it.
       resetHistory(canvas, historyRef);
     },
@@ -143,6 +154,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     (async () => {
       await hydrate(canvas, initialObjects);
       if (disposed) return;
+      applyReadOnly(canvas, readOnlyRef.current);
       // The baseline snapshot has to contain what is already on the board.
       // Undo emits the diff between two snapshots now, so an empty baseline
       // would delete every pre-existing object on the first Ctrl+Z.
@@ -199,13 +211,24 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     el.style.backgroundSize = '24px 24px';
   }, [gridVisible, theme]);
 
+  // ---- Read-only mode ----
+  // Applied as its own effect rather than folded into the tool effect, because
+  // a role can change while the board is open: an owner demoting you to viewer
+  // has to take hold without a reload.
+  useEffect(() => {
+    readOnlyRef.current = readOnly;
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    applyReadOnly(canvas, readOnly);
+  }, [readOnly]);
+
   // ---- Tool behavior (brush settings + shape drawing) ----
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
 
-    canvas.isDrawingMode = ['pencil', 'pen', 'highlighter', 'marker'].includes(tool);
-    canvas.selection = tool === 'select';
+    canvas.isDrawingMode = !readOnly && ['pencil', 'pen', 'highlighter', 'marker'].includes(tool);
+    canvas.selection = !readOnly && tool === 'select';
 
     if (canvas.isDrawingMode) {
       const brush = new fabric.PencilBrush(canvas);
@@ -215,7 +238,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
         tool === 'highlighter' ? strokeWidth * 6 : tool === 'marker' ? strokeWidth * 3 : strokeWidth;
       canvas.freeDrawingBrush = brush;
     }
-  }, [tool, strokeColor, strokeWidth]);
+  }, [tool, strokeColor, strokeWidth, readOnly]);
 
   // ---- Shape drawing via mouse down/move/up ----
   useEffect(() => {
@@ -225,7 +248,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     const shapeTools: ToolType[] = ['rectangle', 'circle', 'triangle', 'diamond', 'star', 'arrow', 'line'];
 
     const onMouseDown = (opt: fabric.TEvent) => {
-      if (!shapeTools.includes(tool)) return;
+      if (readOnlyRef.current || !shapeTools.includes(tool)) return;
       const pointer = canvas.getViewportPoint(opt.e as any);
       startPointRef.current = { x: pointer.x, y: pointer.y };
 
@@ -319,6 +342,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     if (!canvas) return;
 
     const onClick = (opt: fabric.TEvent) => {
+      if (readOnlyRef.current) return;
       const pointer = canvas.getViewportPoint(opt.e as any);
       if (tool === 'text') {
         const textbox = withMeta(
@@ -510,6 +534,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
       (obj as any).zIndex = payload.zIndex ?? 0;
       isRemoteUpdate.current = true;
       canvas.add(obj as fabric.Object);
+      applyReadOnly(canvas, readOnlyRef.current);
       canvas.renderAll();
       isRemoteUpdate.current = false;
     };
@@ -629,6 +654,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     if (!canvas) return;
 
     const onKey = (e: KeyboardEvent) => {
+      if (readOnlyRef.current) return;
       const meta = e.ctrlKey || e.metaKey;
       const active = canvas.getActiveObject();
       const activeObjects = canvas.getActiveObjects();
@@ -678,6 +704,27 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
 export default CanvasBoard;
 
 // ---- Helpers ----
+
+/**
+ * Makes every object on the canvas selectable or inert. Fabric's controls are
+ * per-object, so hiding the toolbar is not enough: a viewer could still drag,
+ * resize and rotate anything on the board.
+ *
+ * A no-op for an editor beyond re-asserting the defaults, which is what lets a
+ * mid-session promotion take effect without a reload.
+ */
+function applyReadOnly(canvas: fabric.Canvas, readOnly: boolean) {
+  canvas.getObjects().forEach((obj) => {
+    obj.selectable = !readOnly;
+    obj.evented = !readOnly;
+  });
+  if (readOnly) {
+    canvas.discardActiveObject();
+    canvas.isDrawingMode = false;
+    canvas.selection = false;
+  }
+  canvas.renderAll();
+}
 
 /**
  * Enlivens saved objects in one call so they keep the order the API sorted them

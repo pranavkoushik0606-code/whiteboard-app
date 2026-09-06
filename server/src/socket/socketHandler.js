@@ -14,6 +14,39 @@ function getRoomPresence(boardId) {
   return presence.get(boardId);
 }
 
+// socketId -> the same per-connection role cache the handlers below consult.
+// Kept module-level so the REST layer can reach in when a share is changed;
+// without it, removing someone from a board they are currently sitting in did
+// nothing until they happened to reconnect.
+const socketRoles = new Map();
+
+/**
+ * Applies a membership change to everyone from `userId` currently in the board,
+ * and tells them about it on `board:role` so the UI can follow. `role` is null
+ * when access was removed outright.
+ *
+ * Returns the number of live sockets updated — zero simply means they were not
+ * in the board, which needs no handling: the next `board:join` re-reads the
+ * database anyway.
+ */
+export function syncBoardRole(io, boardId, userId, role) {
+  const room = presence.get(String(boardId));
+  if (!room) return 0;
+
+  let updated = 0;
+  for (const [socketId, entry] of room) {
+    if (entry.userId !== String(userId)) continue;
+    const roles = socketRoles.get(socketId);
+    if (roles) {
+      if (role) roles.set(String(boardId), role);
+      else roles.delete(String(boardId));
+    }
+    io?.to(socketId).emit('board:role', { boardId: String(boardId), role: role || null });
+    updated += 1;
+  }
+  return updated;
+}
+
 // One version every N object mutations, so the timeline fills up without anyone
 // remembering to press save. Counted here rather than in the browser because
 // five people on one board should produce one timeline, not five. Sprint 2
@@ -62,9 +95,10 @@ export function initSocket(io) {
     // below carries a client-supplied boardId, so each one is checked against
     // this map — a valid JWT alone must never be enough to read or write a
     // board. Roles are cached at join time rather than re-queried per event
-    // (cursor:move alone runs ~25x/second); the trade-off is that revoking
-    // access takes effect on the member's next reconnect.
+    // (cursor:move alone runs ~25x/second); a share change reaches the cache
+    // through syncBoardRole rather than by re-querying.
     const boardRoles = new Map();
+    socketRoles.set(socket.id, boardRoles);
 
     /**
      * Returns true when this socket may perform a `minRole` action on boardId.
@@ -112,7 +146,10 @@ export function initSocket(io) {
     });
 
     socket.on('board:leave', () => leaveBoard(socket, currentBoardId));
-    socket.on('disconnect', () => leaveBoard(socket, currentBoardId));
+    socket.on('disconnect', () => {
+      leaveBoard(socket, currentBoardId);
+      socketRoles.delete(socket.id);
+    });
 
     function leaveBoard(socket, boardId) {
       if (!boardId) return;

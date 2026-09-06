@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, Search, Grid3x3, List, Star, MoreVertical, Trash2, Copy, Pencil, Settings as SettingsIcon, Sun, Moon,
+  Plus, Search, Grid3x3, List, Star, MoreVertical, Trash2, Copy, Pencil, Share2, Settings as SettingsIcon, Sun, Moon,
 } from 'lucide-react';
 import { useBoardStore, BoardSummary } from '../store/useBoardStore';
+import ShareModal from '../components/ShareModal';
 import { useAuthStore } from '../store/useAuthStore';
 import { useTheme } from '../context/ThemeContext';
 
@@ -22,6 +23,7 @@ export default function Dashboard() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [sharing, setSharing] = useState<BoardSummary | null>(null);
 
   useEffect(() => {
     fetchBoards({ search, filter: filter === 'all' ? undefined : filter });
@@ -160,6 +162,7 @@ export default function Dashboard() {
                     onDelete={() => deleteBoard(b._id)}
                     onDuplicate={() => duplicateBoard(b._id)}
                     onFavorite={() => toggleFavorite(b._id, !b.isFavorite)}
+                    onShare={() => setSharing(b)}
                   />
                 </div>
               </div>
@@ -185,18 +188,35 @@ export default function Dashboard() {
                   onDelete={() => deleteBoard(b._id)}
                   onDuplicate={() => duplicateBoard(b._id)}
                   onFavorite={() => toggleFavorite(b._id, !b.isFavorite)}
+                  onShare={() => setSharing(b)}
                 />
               </div>
             ))}
           </div>
         )}
       </main>
+
+      {sharing && (
+        <div className="fixed inset-0 z-40">
+          <ShareModal
+            boardId={sharing._id}
+            boardTitle={sharing.title}
+            canManage={sharing.role === 'owner'}
+            onClose={() => {
+              setSharing(null);
+              // A removal or a role change can move a board between the two
+              // lists, so re-read rather than guess.
+              fetchBoards({ search, filter: filter === 'all' ? undefined : filter });
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
 function BoardMenu({
-  board, menuOpenId, setMenuOpenId, onRename, onDelete, onDuplicate, onFavorite,
+  board, menuOpenId, setMenuOpenId, onRename, onDelete, onDuplicate, onFavorite, onShare,
 }: {
   board: BoardSummary;
   menuOpenId: string | null;
@@ -205,8 +225,13 @@ function BoardMenu({
   onDelete: () => void;
   onDuplicate: () => void;
   onFavorite: () => void;
+  onShare: () => void;
 }) {
   const open = menuOpenId === board._id;
+  // Until boards could be shared, every board in this list was your own. Now
+  // the menu has to stop offering a rename that comes back 403.
+  const isOwner = board.role === 'owner';
+  const canEdit = isOwner || board.role === 'editor';
   return (
     <div className="relative">
       <button
@@ -224,9 +249,10 @@ function BoardMenu({
           className="absolute right-0 top-7 z-20 w-40 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg py-1 text-sm"
         >
           <MenuItem icon={<Star size={14} />} label={board.isFavorite ? 'Unfavorite' : 'Favorite'} onClick={onFavorite} />
-          <MenuItem icon={<Pencil size={14} />} label="Rename" onClick={onRename} />
+          <MenuItem icon={<Share2 size={14} />} label={isOwner ? 'Share' : 'People'} onClick={onShare} />
+          {canEdit && <MenuItem icon={<Pencil size={14} />} label="Rename" onClick={onRename} />}
           <MenuItem icon={<Copy size={14} />} label="Duplicate" onClick={onDuplicate} />
-          <MenuItem icon={<Trash2 size={14} />} label="Delete" danger onClick={onDelete} />
+          {isOwner && <MenuItem icon={<Trash2 size={14} />} label="Delete" danger onClick={onDelete} />}
         </div>
       )}
     </div>

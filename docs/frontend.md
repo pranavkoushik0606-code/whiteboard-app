@@ -50,8 +50,10 @@ error message shown inline. **ForgotPassword** — posts the email, then renders
 **Dashboard** — header (theme toggle, settings, colour-coded avatar) and a control row:
 "New board", search box, filter pills (`all | recent | favorite | shared`), grid/list
 toggle. `fetchBoards` re-runs whenever `search` or `filter` changes (no debounce — one
-request per keystroke). Each card has a `⋮` menu: favourite, rename (inline edit),
-duplicate, delete (immediate, no confirmation). Cards show `Board.thumbnail` when there is
+request per keystroke). Each card has a `⋮` menu: favourite, share/people,
+rename (inline edit), duplicate, delete (immediate, no confirmation). The menu is gated on
+the `role` the list now returns — a viewer sees no rename, a non-owner no delete — rather
+than offering an action that comes back 403. Cards show `Board.thumbnail` when there is
 one, falling back to a gradient placeholder.
 
 **BoardEditor** — the whole editor:
@@ -63,6 +65,12 @@ one, falling back to a gradient placeholder.
   restore (compares the payload's `by` against the current user id)
 - undo/redo buttons work by *dispatching a synthetic `keydown`* (`Ctrl+Z` / `Ctrl+Y`) on
   `window`, which the canvas's own shortcut handler picks up
+- reads `role` from the same `GET /boards/:boardId` response and drives the whole
+  read-only path from it: the toolbar's `canEdit`, the canvas's `readOnly`, whether the
+  title is editable, and a "View only" badge in the header
+- listens for `board:role` — an owner demoting you takes effect in place; removing you
+  navigates to the dashboard, since the socket has already stopped accepting your writes
+  and a reload would 403 at the door
 
 **Settings** — change display name (`PUT /auth/profile`), theme toggle, change password
 (`PUT /auth/change-password`), log out.
@@ -71,11 +79,12 @@ one, falling back to a gradient placeholder.
 
 | Component | Role |
 |---|---|
-| `Toolbar` | Floating glass bar, bottom-centre: 13 tool buttons, stroke colour, fill colour, stroke width slider (1–20), undo, redo, grid toggle, comments, history, export, clear canvas |
+| `Toolbar` | Floating glass bar, bottom-centre: 13 tool buttons, stroke colour, fill colour, stroke width slider (1–20), undo, redo, grid toggle, comments, history, export, clear canvas. With `canEdit={false}` everything that writes is removed rather than disabled, leaving Select, grid, comments, history and export |
 | `PresenceCursors` | Fixed full-screen overlay (`pointer-events-none`) drawing an SVG arrow + name badge per remote socket, in that user's colour. Cursors travel in scene coordinates and are re-projected through this viewer's own viewport, sampled once per animation frame |
 | `CommentsPanel` | Right drawer: loads `GET /comments/:boardId`, appends live via `comment:new`, post box (Enter to send), per-comment resolve toggle |
 | `VersionHistoryPanel` | Right drawer: a name field and Save button that captures a version (the snapshot is built server-side, so nothing but the label is sent), plus a list of versions with label, timestamp, author and a restore button. Restore reloads the canvas locally and is broadcast to the rest of the room as `board:restored` |
 | `ExportMenu` | Small popover: PNG / JPEG / PDF / JSON. `jspdf` is dynamically imported so it stays out of the initial bundle |
+| `ShareModal` | Invite by email with an editor/viewer dropdown, plus the current roster with per-member role and remove controls. Used from both the dashboard menu and the editor header; a non-owner gets the same roster read-only |
 | `ProtectedRoute` | Waits on `loading`, then redirects to `/login` if there's no user |
 
 ## The canvas engine — `canvas/CanvasBoard.tsx`
@@ -83,6 +92,13 @@ one, falling back to a gradient placeholder.
 A `forwardRef` component exposing `{ getCanvas(), loadObjects(objects) }` via
 `useImperativeHandle`. Internally a set of focused `useEffect` blocks:
 
+0. **Read-only** — when `readOnly` is set, every object is made `selectable: false,
+   evented: false`, the active selection is discarded, and the shape, click-placement and
+   shortcut handlers all bail out. This is what makes the role gate real: Fabric's controls
+   are per-object, so hiding the toolbar would still leave a viewer able to drag, resize and
+   rotate anything on the board — writes the server drops in silence, so the change would
+   look like it worked and then vanish on reload. Applied as its own effect so an owner
+   changing your role mid-session takes hold without a reload.
 1. **Init** — creates the `fabric.Canvas` sized to `window.innerWidth × innerHeight-64`,
    `preserveObjectStacking: true`, enlivens `initialObjects`, seeds the history stack, and
    wires a `resize` listener. Disposes on unmount.

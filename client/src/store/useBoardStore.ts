@@ -1,11 +1,16 @@
 import { create } from 'zustand';
 import { api } from '../lib/api';
 
+export type BoardRole = 'owner' | 'editor' | 'viewer';
+
 export interface BoardSummary {
   _id: string;
   title: string;
   thumbnail: string;
+  /** This user's own bookmark, not a property of the board. */
   isFavorite: boolean;
+  /** What this user may do with the board, so the menu can hide the rest. */
+  role: BoardRole;
   updatedAt: string;
   lastOpenedAt: string;
 }
@@ -54,10 +59,13 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     set({ owned: [data.board, ...get().owned] });
   },
 
+  // Its own route, not a field on PUT /boards/:id: favouriting is the viewer's
+  // own bookmark and must not require write access to the board. Both lists are
+  // patched because a shared board can be favourited now too.
   toggleFavorite: async (id, value) => {
-    await api.put(`/boards/${id}`, { isFavorite: value });
-    set({
-      owned: get().owned.map((b) => (b._id === id ? { ...b, isFavorite: value } : b)),
-    });
+    await api.put(`/boards/${id}/favorite`, { isFavorite: value });
+    const mark = (list: BoardSummary[]) =>
+      list.map((b) => (b._id === id ? { ...b, isFavorite: value } : b));
+    set({ owned: mark(get().owned), shared: mark(get().shared) });
   },
 }));

@@ -221,7 +221,7 @@ socket payload to check what is *sent*, two measure the rendered cursor to check
 projection kills 2, never sampling the viewport kills 2, an opaque highlighter kills 1, and
 applying the alpha to every brush kills the pencil control test.
 
-### Sprint 7 — Sharing UI · 55 min
+### Sprint 7 — Sharing UI · 55 min · ✅ DONE
 
 - Share modal on the existing `POST /boards/:id/invite` + `BoardMember` role model — 30 min
 - Role-gate the toolbar off the `req.boardRole` the API already returns (viewers read-only) — 10 min
@@ -229,6 +229,45 @@ applying the alpha to every brush kills the pencil control test.
 
 *The favourite fix has to land with sharing: today one member favouriting a board
 favourites it for everyone. Until now that was invisible because nobody could share.*
+
+**What actually shipped.** The sprint's own framing turned out to apply more widely than
+the favourite bug: giving sharing a UI made four latent defects reachable, and none of them
+could be left in.
+
+*Invite validated nothing.* `role` went straight from the request body into an update with
+no validators. `owner` is in the `BoardMember` enum, so an owner could mint a second owner
+who could delete the board out from under them; a junk string was persisted verbatim,
+producing a membership whose role matched nothing in `roleRank` — access silently gone.
+`owner` is now not grantable at all (ownership is the `Board.owner` reference), and the
+board's own owner can no longer be added as their own member. **Rows written before this
+check are not backfilled**, and `getBoardRole` still reads them.
+
+*A read-only toolbar is not a read-only board.* Fabric's controls are per-object, so hiding
+the write tools left a viewer able to drag, resize, rotate and delete anything on the board.
+The server drops those writes in silence, which is worse than blocking them: it looks like
+it worked until you reload. `CanvasBoard` takes a `readOnly` prop that makes every object
+inert and bails out of the shape, placement and shortcut handlers.
+
+*Socket roles are cached at join time.* Removing someone from a board they were sitting in
+did nothing until they happened to reconnect — a documented Sprint 1 trade-off that stops
+being acceptable once there is a button for it. `syncBoardRole` pushes a change into the
+live per-socket cache and emits `board:role`, so the demotion takes effect on the member's
+next event and a removal walks them back to the dashboard.
+
+*The favourite filter only ever matched boards you owned.* Because the flag was a field on
+the board, `filter=favorite` blanked the shared list outright — you could not favourite a
+board shared with you at all. Both lists are filtered against the caller's `Favorite` rows
+now, and the route moved off `PUT /boards/:id` (editor) onto `PUT /boards/:id/favorite`
+(viewer), since a bookmark is not a write to the board.
+
+Existing flags are migrated on boot. Nobody could share while the flag lived on the board,
+so the owner was the only person who ever set it, which makes the migration exact rather
+than a guess.
+
+Eleven tests in `e2e/sharing.spec.ts`, verified against eight mutations — each kills
+exactly one test. The **migration is not among them**: it runs at boot and the suite starts
+the server once, before any test could seed a legacy board. It is verified by a one-off
+script instead (seeded legacy boards, two owners, plus a second run for idempotence).
 
 ### Sprint 8 — Notifications and mentions · 50 min
 

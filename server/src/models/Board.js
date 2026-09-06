@@ -8,7 +8,6 @@ const boardSchema = new mongoose.Schema(
     background: { type: String, default: '#FFFFFF' },
     gridEnabled: { type: Boolean, default: true },
     privacy: { type: String, enum: ['private', 'public', 'link'], default: 'private' },
-    isFavorite: { type: Boolean, default: false },
     lastOpenedAt: { type: Date, default: Date.now },
   },
   { timestamps: true }

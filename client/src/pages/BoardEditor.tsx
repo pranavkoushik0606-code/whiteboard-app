@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users } from 'lucide-react';
+import { ArrowLeft, Users, Share2, Eye } from 'lucide-react';
 import { api } from '../lib/api';
 import { useSocket } from '../hooks/useSocket';
 import { useAuthStore } from '../store/useAuthStore';
@@ -11,6 +11,7 @@ import PresenceCursors from '../components/PresenceCursors';
 import CommentsPanel from '../components/CommentsPanel';
 import VersionHistoryPanel from '../components/VersionHistoryPanel';
 import ExportMenu from '../components/ExportMenu';
+import ShareModal from '../components/ShareModal';
 
 export default function BoardEditor() {
   const { boardId } = useParams<{ boardId: string }>();
@@ -27,7 +28,11 @@ export default function BoardEditor() {
   const [showHistory, setShowHistory] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const [clearing, setClearing] = useState(false);
+  // The API has always returned this; nothing used it until now, so a viewer
+  // got the full editor and found out it did nothing only after drawing.
+  const [role, setRole] = useState<'owner' | 'editor' | 'viewer'>('viewer');
   const { gridVisible } = useCanvasStore();
   const currentUserId = useAuthStore((s) => s.user?.id);
 
@@ -37,6 +42,7 @@ export default function BoardEditor() {
       setBoard(res.data.board);
       setTitle(res.data.board.title);
       setObjects(res.data.objects);
+      setRole(res.data.role);
     });
   }, [boardId]);
 
@@ -60,6 +66,8 @@ export default function BoardEditor() {
   // No periodic save. Every mutation is persisted by its own socket event as it
   // happens; the old 10s bulk upsert re-wrote every object on the board from
   // every connected client, which was pure duplication.
+
+  const canEdit = role === 'owner' || role === 'editor';
 
   const commitTitle = async () => {
     setEditingTitle(false);
@@ -116,13 +124,27 @@ export default function BoardEditor() {
       if (payload.by === currentUserId) return;
       canvasHandleRef.current?.loadObjects([]);
     };
+    // The owner changing your role while you are sitting in the board. Losing
+    // access entirely means leaving: the socket has already stopped accepting
+    // your writes, and a reload would 403 at the door anyway.
+    const onRole = (payload: any) => {
+      if (payload.boardId !== boardId) return;
+      if (!payload.role) {
+        navigate('/dashboard');
+        return;
+      }
+      setRole(payload.role);
+    };
+
     socket.on('board:restored', onRestored);
     socket.on('board:cleared', onCleared);
+    socket.on('board:role', onRole);
     return () => {
       socket.off('board:restored', onRestored);
       socket.off('board:cleared', onCleared);
+      socket.off('board:role', onRole);
     };
-  }, [socketRef.current, handleRestore, currentUserId]);
+  }, [socketRef.current, handleRestore, currentUserId, boardId, navigate]);
 
   if (!board) {
     return <div className="h-screen flex items-center justify-center">Loading board…</div>;
@@ -135,7 +157,7 @@ export default function BoardEditor() {
           <button onClick={() => navigate('/dashboard')} className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
             <ArrowLeft size={18} />
           </button>
-          {editingTitle ? (
+          {canEdit && editingTitle ? (
             <input
               autoFocus
               value={title}
@@ -145,14 +167,34 @@ export default function BoardEditor() {
               className="font-medium bg-transparent border-b border-primary-500 outline-none"
             />
           ) : (
-            <h1 className="font-medium cursor-text" onClick={() => setEditingTitle(true)}>
+            <h1
+              className={`font-medium ${canEdit ? 'cursor-text' : ''}`}
+              onClick={() => canEdit && setEditingTitle(true)}
+            >
               {title}
             </h1>
           )}
         </div>
 
-        <div className="flex items-center gap-2 text-sm text-neutral-500">
-          <Users size={16} /> {presenceCount} online
+        <div className="flex items-center gap-3 text-sm text-neutral-500">
+          {!canEdit && (
+            <span
+              title="View only"
+              className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-neutral-200/70 dark:bg-neutral-800 text-xs"
+            >
+              <Eye size={14} /> View only
+            </span>
+          )}
+          <span className="flex items-center gap-2">
+            <Users size={16} /> {presenceCount} online
+          </span>
+          <button
+            title="Share"
+            onClick={() => setShowShare(true)}
+            className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          >
+            <Share2 size={18} />
+          </button>
         </div>
       </header>
 
@@ -163,6 +205,7 @@ export default function BoardEditor() {
           socket={socketRef.current}
           initialObjects={objects}
           gridVisible={gridVisible}
+          readOnly={!canEdit}
           onThumbnail={handleThumbnail}
         />
         <PresenceCursors
@@ -178,7 +221,17 @@ export default function BoardEditor() {
           onHistoryClick={() => setShowHistory(true)}
           onCommentsClick={() => setShowComments(true)}
           onClearClick={() => setShowClearConfirm(true)}
+          canEdit={canEdit}
         />
+
+        {showShare && (
+          <ShareModal
+            boardId={boardId!}
+            boardTitle={board.title}
+            canManage={role === 'owner'}
+            onClose={() => setShowShare(false)}
+          />
+        )}
 
         {showClearConfirm && (
           <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/30">

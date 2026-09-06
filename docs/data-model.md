@@ -37,11 +37,10 @@ email, avatarUrl, color, theme, createdAt }`, the only shape ever returned to a 
 |---|---|---|
 | `title` | String | required, trimmed, default `'Untitled Board'` |
 | `owner` | ObjectId → User | required |
-| `thumbnail` | String | default `''` — **stored but never written by any code path** |
+| `thumbnail` | String | default `''` — a JPEG data URL, written by the canvas teardown since Sprint 5 |
 | `background` | String | default `'#FFFFFF'` |
 | `gridEnabled` | Boolean | default `true` — persisted, but the editor drives the grid from client-only `useCanvasStore.gridVisible` |
 | `privacy` | `'private' \| 'public' \| 'link'` | default `private` — **stored but not enforced anywhere** |
-| `isFavorite` | Boolean | default `false` (a per-board flag, not per-user) |
 | `lastOpenedAt` | Date | bumped on every `GET /api/boards/:boardId`; drives dashboard sort |
 
 Index: `{ owner: 1, title: 'text' }`.
@@ -58,6 +57,27 @@ Join table for sharing.
 
 Unique compound index `{ board: 1, user: 1 }` — one membership per user per board, which
 is what makes the invite endpoint's `upsert` safe.
+
+The enum still permits `owner`, but since Sprint 7 the API refuses to write it: ownership
+is the `Board.owner` reference, and a membership row granting it would produce a second
+owner who could delete the board out from under the first. `getBoardRole` still honours any
+such row written before that check existed — there was no backfill.
+
+## Favorite
+
+One row per (user, board) the user has starred.
+
+| Field | Type | Notes |
+|---|---|---|
+| `user` | ObjectId → User | required |
+| `board` | ObjectId → Board | required |
+
+Unique compound index `{ user: 1, board: 1 }`.
+
+This was a boolean on `Board` until Sprint 7. While nobody could share a board the
+difference was invisible — the owner was the only person who ever saw the flag — which is
+also what makes the boot-time migration in `services/favoriteMigration.js` exact rather
+than a guess: every existing flag belonged to that board's owner.
 
 ## CanvasObject
 

@@ -1,6 +1,6 @@
 # Implementation status
 
-An honest inventory, current through Sprint 6. "Working" means the full path exists —
+An honest inventory, current through Sprint 7. "Working" means the full path exists —
 UI → API/socket → database — not just that a schema field or endpoint is present.
 
 ## Working end to end
@@ -14,7 +14,9 @@ UI → API/socket → database — not just that a schema field or endpoint is p
 
 **Dashboard**
 - Create, open, rename (inline), duplicate, delete boards
-- Favourite toggle, title search, `all / recent / favorite / shared` filters, grid/list views
+- Favourite toggle (per user, and works on a board shared with you), title search,
+  `all / recent / favorite / shared` filters, grid/list views
+- Card menu gated on your role: no rename for a viewer, no delete for a non-owner
 - Boards sorted by `lastOpenedAt`, bumped every time a board is opened
 
 **Canvas**
@@ -31,6 +33,15 @@ UI → API/socket → database — not just that a schema field or endpoint is p
 - Clear-canvas button behind an in-page confirmation, broadcast to the room
 - Undo/redo over a 100-entry snapshot stack, broadcast to the room and persisted
 - Every mutation persisted individually over its own socket event; full rehydration on reload
+
+**Sharing**
+- Share modal: invite by email with an editor/viewer role, see the current roster, change
+  a member's role, remove a member. Reachable from the dashboard card menu and the editor
+- Viewers get a genuinely read-only board — no write tools, and every object made inert,
+  because Fabric's controls are per-object and a hidden toolbar does not disarm them
+- A role change or removal reaches sockets already in the board, rather than waiting for
+  the member to reconnect
+- `owner` is not a grantable role, and the board's own owner cannot be added as a member
 
 **Collaboration**
 - Socket auth with the same JWT, per-board rooms
@@ -66,7 +77,6 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
 | Capability | Backend | Missing piece |
 |---|---|---|
 | Image upload | `POST /api/uploads/image` (Multer, 10 MB, image MIME allowlist) + static `/uploads` | no image tool in the toolbar, no upload control |
-| Board sharing / invites | `POST /api/boards/:id/invite`, full `BoardMember` role model, `requireBoardAccess` | no share dialog; the `shared` dashboard filter can only ever show boards someone added you to via a direct API call |
 | Notifications | `GET /api/notifications`, `PUT /:id/read`; rows written on invite and on mention | no bell/inbox UI |
 | Comment mentions | `mentions[]` on the model, notification fan-out on create | no `@` autocomplete; the panel always posts an empty `mentions` array |
 | Comment pinning / threads | `x`, `y`, `parentComment` on the model | panel always posts `x: 0, y: 0` and renders a flat list |
@@ -116,11 +126,22 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
    into the brush colour (`rgba(…, 0.4)`), since Fabric 6's `PencilBrush` has no `opacity`
    property and assigning one was a silent no-op. Keeping it in the colour also means it
    serializes and persists without any extra plumbing.
-8. `Board.isFavorite` is a property of the board, not of the (user, board) pair — once board
-   sharing gets a UI, one member favouriting a board favourites it for everyone.
+8. ~~`Board.isFavorite` is a property of the board, not of the (user, board) pair.~~
+   **Fixed in Sprint 7** — moved to a `Favorite` collection keyed on (user, board), with a
+   `PUT /boards/:id/favorite` route that needs only `viewer`, since a bookmark is not a
+   write to the board. Existing flags are migrated on boot by
+   `services/favoriteMigration.js`; because nobody could share a board while the flag lived
+   there, the owner was the only person who ever set it, which makes the migration exact
+   rather than a guess. That migration is verified by a one-off script, **not** by the
+   regression suite — it runs at boot, and the suite starts the server once, before any
+   test could seed a legacy board.
 9. `GET /api/boards` has no pagination, and `filter=recent` only truncates the *shared* list,
    so "recent" and "all" look identical for boards you own.
 10. Dashboard search fires a request per keystroke — no debounce.
+10a. A membership row written before Sprint 7 could carry `role: 'owner'` or a junk string,
+    because the update ran with no validators. `getBoardRole` still reads them: an `owner`
+    row grants full ownership, and a junk role grants nothing. New rows cannot be either,
+    but no backfill was run.
 11. `BoardEditor`'s presence effect lists `socketRef.current` in its dependency array; a ref
     mutation does not re-run an effect, so this silently relies on mount ordering. Likewise
     `CanvasBoard` receives the socket as a prop read from a ref, so a reconnect would not
@@ -152,8 +173,9 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
 3. ~~Make undo/redo emit: diff the restored snapshot against the live canvas and emit the
    corresponding `object:add` / `object:delete` / `object:update` events.~~ Done in Sprint 3.
 4. ~~Convert cursor coordinates to canvas space before emitting.~~ Done in Sprint 6.
-5. Build the share dialog on top of the existing invite endpoint, and a notification bell on
-   top of the existing notifications endpoint — both are pure frontend work.
+5. ~~Build the share dialog on top of the existing invite endpoint~~ — done in Sprint 7.
+   A notification bell on top of the existing notifications endpoint is still open, and is
+   pure frontend work.
 6. Add an image tool that posts to `/uploads/image` and drops a `fabric.Image` on the canvas.
 7. Emit `object:reorder` from the `[` / `]` shortcuts.
 8. Install and configure eslint, or drop the `lint` script.
