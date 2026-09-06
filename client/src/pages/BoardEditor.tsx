@@ -12,6 +12,7 @@ import CommentsPanel from '../components/CommentsPanel';
 import VersionHistoryPanel from '../components/VersionHistoryPanel';
 import ExportMenu from '../components/ExportMenu';
 import ShareModal from '../components/ShareModal';
+import NotificationBell from '../components/NotificationBell';
 
 export default function BoardEditor() {
   const { boardId } = useParams<{ boardId: string }>();
@@ -188,6 +189,7 @@ export default function BoardEditor() {
           <span className="flex items-center gap-2">
             <Users size={16} /> {presenceCount} online
           </span>
+          <NotificationBell socket={socketRef.current} />
           <button
             title="Share"
             onClick={() => setShowShare(true)}

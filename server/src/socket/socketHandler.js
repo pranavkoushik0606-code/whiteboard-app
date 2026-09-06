@@ -91,6 +91,11 @@ export function initSocket(io) {
   io.on('connection', (socket) => {
     let currentBoardId = null;
 
+    // Every connection joins a room of its own, independently of any board.
+    // Notifications are addressed to a person, not to a board, and the
+    // dashboard has no board to join in the first place.
+    socket.join(`user:${socket.user._id}`);
+
     // Boards this socket has been authorized on, and at what role. Every event
     // below carries a client-supplied boardId, so each one is checked against
     // this map — a valid JWT alone must never be enough to read or write a

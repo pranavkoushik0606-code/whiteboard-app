@@ -8,6 +8,7 @@ import Favorite from '../models/Favorite.js';
 import User from '../models/User.js';
 import Notification from '../models/Notification.js';
 import { syncBoardRole } from '../socket/socketHandler.js';
+import { notify } from '../services/notificationService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 // Roles an owner can hand out. 'owner' is deliberately not on the list: it is
@@ -115,6 +116,8 @@ export const deleteBoard = asyncHandler(async (req, res) => {
     Version.deleteMany({ board: boardId }),
     Comment.deleteMany({ board: boardId }),
     Favorite.deleteMany({ board: boardId }),
+    // Otherwise the bell keeps offering a board that no longer exists.
+    Notification.deleteMany({ board: boardId }),
   ]);
   res.json({ message: 'Board deleted' });
 });
@@ -186,7 +189,7 @@ export const inviteMember = asyncHandler(async (req, res) => {
 
   syncBoardRole(req.app.get('io'), req.board._id, invitee._id, role);
 
-  await Notification.create({
+  await notify(req.app.get('io'), {
     user: invitee._id,
     type: 'board-shared',
     message: `${req.user.name} invited you to "${req.board.title}"`,
@@ -229,8 +232,10 @@ export const removeMember = asyncHandler(async (req, res) => {
   if (!deletedCount) return res.status(404).json({ message: 'Member not found' });
 
   // A board they can no longer open would otherwise sit in their favourites as
-  // a card that 403s when clicked.
+  // a card that 403s when clicked, and in their bell as an invite that leads
+  // nowhere.
   await Favorite.deleteOne({ user: req.params.userId, board: req.board._id });
+  await Notification.deleteMany({ user: req.params.userId, board: req.board._id });
   syncBoardRole(req.app.get('io'), req.board._id, req.params.userId, null);
 
   res.json({ message: 'Member removed' });

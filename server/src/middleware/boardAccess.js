@@ -27,6 +27,16 @@ export async function getBoardRole(userId, boardId) {
   return { board, role: membership ? membership.role : null };
 }
 
+/**
+ * Everyone who can see a board: its owner plus every BoardMember, as a Set of
+ * id strings. Used to keep a mention from addressing someone with no access to
+ * the board it was written on.
+ */
+export async function boardParticipantIds(board) {
+  const memberships = await BoardMember.find({ board: board._id }).select('user').lean();
+  return new Set([String(board.owner), ...memberships.map((m) => String(m.user))]);
+}
+
 // Confirms req.user has at least `minRole` access to req.params.boardId,
 // and attaches `req.board` + `req.boardRole` for downstream handlers.
 export const requireBoardAccess =

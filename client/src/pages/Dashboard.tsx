@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { useBoardStore, BoardSummary } from '../store/useBoardStore';
 import ShareModal from '../components/ShareModal';
+import NotificationBell from '../components/NotificationBell';
+import { useSocket } from '../hooks/useSocket';
 import { useAuthStore } from '../store/useAuthStore';
 import { useTheme } from '../context/ThemeContext';
 
@@ -16,6 +18,10 @@ export default function Dashboard() {
   const { user } = useAuthStore();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  // No board to join here -- this connection exists only for the `user:<id>`
+  // room, so an invite arriving while you are looking at the dashboard shows up
+  // without a reload.
+  const socketRef = useSocket();
 
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [filter, setFilter] = useState<Filter>('all');
@@ -47,6 +53,7 @@ export default function Dashboard() {
       <header className="sticky top-0 z-10 glass border-b border-neutral-200/50 dark:border-neutral-800 px-6 py-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Boards</h1>
         <div className="flex items-center gap-3">
+          <NotificationBell socket={socketRef.current} />
           <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
             {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
           </button>

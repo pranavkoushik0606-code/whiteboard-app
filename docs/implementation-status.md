@@ -1,6 +1,6 @@
 # Implementation status
 
-An honest inventory, current through Sprint 7. "Working" means the full path exists —
+An honest inventory, current through Sprint 8. "Working" means the full path exists —
 UI → API/socket → database — not just that a schema field or endpoint is present.
 
 ## Working end to end
@@ -59,6 +59,14 @@ UI → API/socket → database — not just that a schema field or endpoint is p
 
 **Comments**
 - List, post, live append to everyone in the room, resolve/unresolve toggle
+- `@` autocomplete over the board roster; mentions are highlighted in the posted text and
+  fan out as notifications
+
+**Notifications**
+- Header bell with an unread badge, on the dashboard and in the editor
+- Delivered live over a per-user socket room, so an invite lands without a reload
+- Mark one read by opening it (which navigates to the board), or mark all read
+- Rows are removed with their board, and when a member is removed from a board
 
 **Export**
 - PNG and JPEG at 2× via `toDataURL`, PDF via `jspdf` (loaded on demand), plus raw canvas
@@ -77,8 +85,6 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
 | Capability | Backend | Missing piece |
 |---|---|---|
 | Image upload | `POST /api/uploads/image` (Multer, 10 MB, image MIME allowlist) + static `/uploads` | no image tool in the toolbar, no upload control |
-| Notifications | `GET /api/notifications`, `PUT /:id/read`; rows written on invite and on mention | no bell/inbox UI |
-| Comment mentions | `mentions[]` on the model, notification fan-out on create | no `@` autocomplete; the panel always posts an empty `mentions` array |
 | Comment pinning / threads | `x`, `y`, `parentComment` on the model | panel always posts `x: 0, y: 0` and renders a flat list |
 | In-progress stroke streaming | `draw:stream` relay | nothing emits or listens; remote users only see a stroke once it is finished |
 | Live text editing | `text:edit` relay | nothing emits or listens |
@@ -148,6 +154,11 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
     re-bind its listeners.
 12. Presence is a per-process in-memory `Map` — correct on one instance, wrong the moment
     the backend is scaled horizontally (needs the socket.io Redis adapter).
+12a. ~~Posting a comment never reached anyone else.~~ **Fixed in Sprint 8** — the client
+    emitted the bare comment object while the socket handler destructures
+    `{ boardId, comment }`, so `boardId` was `undefined`, the authorization check failed,
+    and the broadcast was dropped. The `comment:new` listener on the other end had been
+    correct the whole time and simply never fired.
 13. Two users dragging the same object simply overwrite each other (last write wins). No OT,
     no CRDT, no locking.
 14. Uploaded files live on the container filesystem; on Render's free tier they vanish on
@@ -173,9 +184,10 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
 3. ~~Make undo/redo emit: diff the restored snapshot against the live canvas and emit the
    corresponding `object:add` / `object:delete` / `object:update` events.~~ Done in Sprint 3.
 4. ~~Convert cursor coordinates to canvas space before emitting.~~ Done in Sprint 6.
-5. ~~Build the share dialog on top of the existing invite endpoint~~ — done in Sprint 7.
-   A notification bell on top of the existing notifications endpoint is still open, and is
-   pure frontend work.
+5. ~~Build the share dialog on top of the existing invite endpoint, and a notification bell
+   on top of the existing notifications endpoint.~~ Done in Sprints 7 and 8. Neither turned
+   out to be "pure frontend": reading a field for the first time is what tells you nothing
+   was ever validating it.
 6. Add an image tool that posts to `/uploads/image` and drops a `fabric.Image` on the canvas.
 7. Emit `object:reorder` from the `[` / `]` shortcuts.
 8. Install and configure eslint, or drop the `lint` script.

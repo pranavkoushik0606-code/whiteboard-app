@@ -269,13 +269,46 @@ exactly one test. The **migration is not among them**: it runs at boot and the s
 the server once, before any test could seed a legacy board. It is verified by a one-off
 script instead (seeded legacy boards, two owners, plus a second run for idempotence).
 
-### Sprint 8 — Notifications and mentions · 50 min
+### Sprint 8 — Notifications and mentions · 50 min · ✅ DONE
 
 - Bell/inbox UI on `GET /notifications` + `PUT /:id/read` — 25 min
 - `@` autocomplete in the comment panel, populating the `mentions[]` the model already
   has and the notification fan-out already reads — 25 min
 
 *Both are pure frontend. The backend has been writing notification rows this whole time.*
+
+**What actually shipped.** Neither was pure frontend, and the reason is the same one as
+Sprint 7: reading a field for the first time is what tells you nothing was ever validating
+it on the way in.
+
+*`mentions[]` was an open notification primitive.* It came straight from the request body
+into an `insertMany`. Nothing checked that an id was well-formed, that it belonged to
+anyone on the board, that it was not repeated, or that it was not the author. Nothing ever
+filled it in, so nothing ever abused it. It is filtered on all four counts now, and the
+filtered list — not the submitted one — is what gets stored on the comment.
+
+*The bell needed rows that outlive nothing.* A notification held a board reference that
+`deleteBoard` never cascaded to, so the first thing an inbox would show you is an invite to
+a board that no longer exists. Removing a member left the same dangling invite. Both are
+cleaned up now, matching what Sprint 7 did for favourites.
+
+*`PUT /:id/read` answered wrongly twice.* A malformed id reached Mongoose and came back a
+`500`; an id that was not yours answered `200` with `notification: null`, so a miss looked
+exactly like a hit. Both are `404` now.
+
+*A bell that only fills on reload is half a bell.* Sockets were board-scoped, and the
+dashboard has no board — so every connection now joins a `user:<id>` room at handshake
+time and notifications are pushed there. `useSocket(boardId?)` connects with or without a
+board.
+
+And one thing found on the way past: **posting a comment had never reached anyone else.**
+The client emitted the bare comment object while the socket handler destructures
+`{ boardId, comment }`, so `boardId` was `undefined`, the authorization check failed, and
+the broadcast was dropped. The listener on the receiving end had been correct all along and
+simply never fired.
+
+Eleven tests in `e2e/notifications.spec.ts`, verified against twelve mutations. Every test
+is killed by at least one, and the ten targeted mutations each kill exactly one.
 
 ### Sprint 9 — Images · 45 min
 

@@ -1,5 +1,7 @@
+import mongoose from 'mongoose';
 import Comment from '../models/Comment.js';
-import Notification from '../models/Notification.js';
+import { boardParticipantIds } from '../middleware/boardAccess.js';
+import { notifyAll } from '../services/notificationService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 // @route GET /api/comments/:boardId
@@ -13,27 +15,39 @@ export const listComments = asyncHandler(async (req, res) => {
 // @route POST /api/comments/:boardId
 export const addComment = asyncHandler(async (req, res) => {
   const { text, x, y, mentions = [], parentComment = null } = req.body;
+  const board = req.board;
+
+  // `mentions` arrives from the client, and until it had a UI nothing ever
+  // filled it in, so nothing ever checked it either. Left unchecked it is a
+  // notification-sending primitive pointed at any user id in the system.
+  const participants = await boardParticipantIds(board);
+  const mentionIds = [...new Set((Array.isArray(mentions) ? mentions : []).map(String))]
+    .filter((id) => mongoose.isValidObjectId(id))
+    .filter((id) => participants.has(id))
+    // Mentioning yourself is easy to do by accident and never worth a
+    // notification.
+    .filter((id) => id !== String(req.user._id));
+
   const comment = await Comment.create({
-    board: req.params.boardId,
+    board: board._id,
     author: req.user._id,
     text,
     x,
     y,
-    mentions,
+    mentions: mentionIds,
     parentComment,
   });
   await comment.populate('author', 'name avatarUrl color');
 
-  if (mentions.length) {
-    await Notification.insertMany(
-      mentions.map((userId) => ({
-        user: userId,
-        type: 'mention',
-        message: `${req.user.name} mentioned you in a comment`,
-        board: req.params.boardId,
-      }))
-    );
-  }
+  await notifyAll(
+    req.app.get('io'),
+    mentionIds.map((userId) => ({
+      user: userId,
+      type: 'mention',
+      message: `${req.user.name} mentioned you in a comment`,
+      board: board._id,
+    }))
+  );
 
   res.status(201).json({ comment });
 });

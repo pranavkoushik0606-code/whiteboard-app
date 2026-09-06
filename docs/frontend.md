@@ -75,13 +75,21 @@ one, falling back to a gradient placeholder.
 **Settings** — change display name (`PUT /auth/profile`), theme toggle, change password
 (`PUT /auth/change-password`), log out.
 
+`useSocket(boardId?)` opens one connection per page. With a board it joins that room and
+leaves on unmount; **without** one it still connects, because the server puts every
+connection into a `user:<id>` room and the dashboard has no board to join. It also holds a
+throwaway `useState` so a caller re-renders once the connection exists — a ref alone cannot
+wake anything up, which is what the effects reading `socketRef.current` used to rely on
+mount ordering for.
+
 ## Components
 
 | Component | Role |
 |---|---|
 | `Toolbar` | Floating glass bar, bottom-centre: 13 tool buttons, stroke colour, fill colour, stroke width slider (1–20), undo, redo, grid toggle, comments, history, export, clear canvas. With `canEdit={false}` everything that writes is removed rather than disabled, leaving Select, grid, comments, history and export |
 | `PresenceCursors` | Fixed full-screen overlay (`pointer-events-none`) drawing an SVG arrow + name badge per remote socket, in that user's colour. Cursors travel in scene coordinates and are re-projected through this viewer's own viewport, sampled once per animation frame |
-| `CommentsPanel` | Right drawer: loads `GET /comments/:boardId`, appends live via `comment:new`, post box (Enter to send), per-comment resolve toggle |
+| `CommentsPanel` | Right drawer: loads `GET /comments/:boardId`, appends live via `comment:new`, post box (Enter to send), per-comment resolve toggle. Typing `@` opens an autocomplete over the board roster; mentions are resolved from the text at post time, not accumulated from clicks, so deleting a name back out un-mentions them. Exports `resolveMentions(text, members)`, which is that rule |
+| `NotificationBell` | Header bell with an unread badge, a dropdown of the 50 most recent, mark-one-on-open and mark-all-read. Live via `notification:new` on whatever socket the page already has |
 | `VersionHistoryPanel` | Right drawer: a name field and Save button that captures a version (the snapshot is built server-side, so nothing but the label is sent), plus a list of versions with label, timestamp, author and a restore button. Restore reloads the canvas locally and is broadcast to the rest of the room as `board:restored` |
 | `ExportMenu` | Small popover: PNG / JPEG / PDF / JSON. `jspdf` is dynamically imported so it stays out of the initial bundle |
 | `ShareModal` | Invite by email with an editor/viewer dropdown, plus the current roster with per-member role and remove controls. Used from both the dashboard menu and the editor header; a non-owner gets the same roster read-only |

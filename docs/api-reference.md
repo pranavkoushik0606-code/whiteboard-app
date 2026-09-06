@@ -154,7 +154,12 @@ Tokens are `jwt.sign({ id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN || '7d' })`
 
 - `GET` returns comments sorted oldest-first with `author` populated to
   `{ name, avatarUrl, color }`.
-- `POST` fans out a `mention` Notification per entry in `mentions`.
+- `POST` fans out a `mention` Notification per entry in `mentions`, but only after
+  filtering that list: ids must be well-formed, must belong to someone with access to the
+  board, must be deduplicated, and must not be the author. `mentions` comes straight from
+  the client, and until it had a UI nothing filled it in — so nothing checked it either,
+  and it was a notification-sending primitive pointed at any user id in the system.
+  Filtered ids are what gets stored on the comment, not what was sent.
 - The two `/comment/:commentId` routes are keyed by comment id, not board id, so they run
   `requireCommentAccess(minRole)` instead — it loads the comment, then applies the same
   role check against the board the comment belongs to.
@@ -180,7 +185,15 @@ Accepts `image/png|jpeg|jpg|gif|webp` only, max 10 MB. The returned `url` is
 
 | Method | Path | Auth | Returns |
 |---|---|---|---|
-| GET | `/` | JWT | `{ notifications }` — your 50 most recent, newest first |
+| GET | `/` | JWT | `{ notifications, unread }` — your 50 most recent, newest first |
+| PUT | `/read-all` | JWT | `{ read }` — number marked |
 | PUT | `/:id/read` | JWT | `{ notification }` — marks read, scoped to your own |
 
-**No client code calls these yet.**
+- `unread` is counted separately rather than derived from the page, since the list is
+  capped at 50 and would under-report anyone with a real backlog.
+- `read-all` is declared **before** `/:id/read` so the literal is never parsed as an id.
+- `/:id/read` returns `404` for a malformed id (it used to reach Mongoose and come back a
+  `500`) and for one that is not yours (it used to answer `200` with `notification: null`,
+  making a miss indistinguishable from a hit).
+- Rows are deleted with their board, and when a member is removed from a board — otherwise
+  the bell keeps offering somewhere you cannot go.

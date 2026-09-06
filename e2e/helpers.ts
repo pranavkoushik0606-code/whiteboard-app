@@ -76,6 +76,19 @@ export async function openBoard(
   return page;
 }
 
+/** The dashboard, authenticated the same way — no board, no canvas to wait on. */
+export async function openDashboard(browser: Browser, as: TestUser): Promise<Page> {
+  const context = await browser.newContext();
+  await context.addInitScript((token) => {
+    window.localStorage.setItem('token', token);
+  }, as.token);
+
+  const page = await context.newPage();
+  await page.goto('/dashboard');
+  await page.waitForSelector('text=New board');
+  return page;
+}
+
 export interface CanvasObjectSnapshot {
   objectId: string;
   type: string;
