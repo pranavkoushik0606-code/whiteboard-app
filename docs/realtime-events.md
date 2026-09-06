@@ -47,7 +47,7 @@ per-process — a multi-instance deployment needs the Redis adapter for this to 
 |---|---|---|
 | `board:join` | `{ boardId }` | Joins the room, registers presence, emits `presence:joined` to others and `presence:sync` back to the joiner |
 | `board:leave` | — | Removes presence, emits `presence:left`, leaves the room |
-| `cursor:move` | `{ boardId, x, y }` | Updates the stored cursor, broadcasts `cursor:update` |
+| `cursor:move` | `{ boardId, x, y }` — scene coordinates, not screen pixels | Updates the stored cursor, broadcasts `cursor:update` |
 | `object:add` | `{ boardId, object: { objectId, type, data, zIndex? } }` | Upserts on `{ board, objectId }` then broadcasts `object:added` with the saved doc. Upsert rather than create because undo/redo replays an add for an object that may or may not still have a row |
 | `object:update` | `{ boardId, objectId, data }` | `updateOne` `$set: { data }` then broadcasts `object:updated` |
 | `object:delete` | `{ boardId, objectId }` | `deleteOne` then broadcasts `object:deleted` |
@@ -63,7 +63,7 @@ per-process — a multi-instance deployment needs the Redis adapter for this to 
 | `presence:sync` | `[{ userId, name, color, cursor }]` — full room roster, sent only to the joiner | `BoardEditor` (sets the online count) |
 | `presence:joined` | `{ userId, name, color, cursor }` | `BoardEditor` (increments count) |
 | `presence:left` | `{ socketId }` | `BoardEditor` (decrements), `PresenceCursors` (removes the cursor) |
-| `cursor:update` | `{ socketId, userId, name, color, x, y }` | `PresenceCursors` |
+| `cursor:update` | `{ socketId, userId, name, color, x, y }` — `x`/`y` in scene coordinates | `PresenceCursors` |
 | `object:added` | the saved `CanvasObject` doc | `CanvasBoard` |
 | `object:updated` | `{ objectId, data, by }` | `CanvasBoard` |
 | `object:deleted` | `{ objectId, by }` | `CanvasBoard` |
@@ -93,9 +93,25 @@ stack so an undo can never reach back over someone else's edit.
 ## Throttling
 
 `PresenceCursors` throttles `cursor:move` to one emit per 40 ms (~25 fps) using a plain
-timestamp check on the global `mousemove` listener. Cursor coordinates are **viewport**
-pixels (`e.clientX/Y`), not canvas coordinates — so remote cursors do not track correctly
-when two people are panned or zoomed differently.
+timestamp check on the global `mousemove` listener.
+
+## Cursor coordinates
+
+`cursor:move` carries **scene** coordinates — the plane the objects themselves live in,
+which does not move when someone pans or zooms. The sender converts with `toScenePoint`,
+the receiver projects back through its own `viewportTransform` with `toViewportPoint`; both
+live in `canvas/CanvasBoard.tsx`. Until Sprint 6 the payload was raw `e.clientX/Y`, so a
+remote cursor was only ever in the right place when both people happened to be looking at
+the same part of the board at the same zoom.
+
+The server relays `x`/`y` untouched, so this is purely a client-side contract — but both
+ends have to agree on it, and a client that still sent screen pixels would point at the
+wrong thing for everyone else.
+
+Because a cursor is pinned to a point on the board rather than to the screen, it has to be
+re-projected whenever the *viewer's* viewport moves, not just when the sender's mouse does.
+Fabric has no "viewport changed" event, so `PresenceCursors` samples the transform once per
+animation frame and re-renders only when it actually changed.
 
 ## Conflict resolution
 

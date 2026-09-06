@@ -194,7 +194,7 @@ blank thumbnail" passed even with both capture guards removed, because a blank c
 *already has* a thumbnail from StrictMode's throwaway first mount, so the test now re-opens a
 board and checks the thumbnail survives. That version does fail without the guards.
 
-### Sprint 6 — Pointing at the right things · 30 min
+### Sprint 6 — Pointing at the right things · 30 min · ✅ DONE
 
 - Convert cursor coordinates to canvas space before emitting — today they're `clientX/Y`,
   so remote cursors point at the wrong place whenever two people are panned differently
@@ -202,6 +202,24 @@ board and checks the thumbnail survives. That version does fail without the guar
   has no such property, so highlighter is currently just a wider opaque stroke
 
 *Do a minimal version of this if you're heading for Yjs — awareness replaces the cursor half.*
+
+**What actually shipped.** Converting on the way out is only half the fix, and the half
+that's easy to mistake for the whole thing: a cursor is pinned to a point on the *board*,
+so the receiver has to re-project it whenever **its own** viewport moves, not just when the
+sender's mouse does. Fabric has no viewport-changed event, so `PresenceCursors` samples the
+transform once per animation frame and re-renders only on an actual change — cheaper than
+hooking `after:render`, which also fires on every drawn stroke. The conversion lives in
+`toScenePoint` / `toViewportPoint` in `CanvasBoard.tsx`, written in the general matrix form
+so a rotated viewport would still work.
+
+The server needed no change: it relays `x`/`y` untouched, so this is a client-side contract
+on both ends.
+
+Six tests in `e2e/cursors.spec.ts`, split so each side fails on its own — two read the raw
+socket payload to check what is *sent*, two measure the rendered cursor to check what is
+*drawn*. Verified against five mutations: emitting `clientX/Y` again kills 3, dropping the
+projection kills 2, never sampling the viewport kills 2, an opaque highlighter kills 1, and
+applying the alpha to every brush kills the pencil control test.
 
 ### Sprint 7 — Sharing UI · 55 min
 
@@ -269,9 +287,11 @@ other — last write wins, no OT, no CRDT, no locking.
 | **14b** `Y.UndoManager` replaces the 100-entry local history stack | 60 min |
 | **14c** Awareness replaces the custom presence map and cursor plumbing | 60 min |
 
-**Decide this before Sprint 3.** Yjs subsumes Sprint 3 entirely, half of Sprint 6, and
-most of Sprint 11 — roughly 90 minutes of the core track becomes wasted work if you do
-both. If you want concurrent editing but not now, the cheap stand-in is a per-object
+**This decision point has passed.** Sprints 3 and 6 both shipped, so the ~90 minutes Yjs
+would have subsumed is already spent: `14b` would replace the snapshot-diff undo and `14c`
+would replace the cursor plumbing. What remains genuinely additive is `14a` (concurrent
+editing) and most of Sprint 11. Doing 14b/14c now is a deletion, not a migration — which
+is the cheaper kind of rewrite, but price it as rework rather than as new capability. If you want concurrent editing but not now, the cheap stand-in is a per-object
 Lamport counter to reject stale writes (~30 min, fits in Sprint 2).
 
 ---

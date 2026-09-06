@@ -22,6 +22,18 @@ const GRID_LINE = { light: '#eeeeee', dark: '#2a2a2a' };
 // visible. A colour the user picked themselves is never touched.
 const DEFAULT_STROKE = { light: '#1e1e1e', dark: '#f5f5f5' };
 
+// Highlighter ink is the stroke colour at 40% alpha. Fabric 6's PencilBrush has
+// no `opacity` property, so the old `brush.opacity = 0.4` was a silent no-op and
+// the highlighter was nothing but a fat opaque pen. The alpha has to live in the
+// colour itself, which also means it survives serialization for free.
+const HIGHLIGHTER_ALPHA = 0.4;
+
+function withAlpha(color: string, alpha: number): string {
+  const parsed = new fabric.Color(color);
+  parsed.setAlpha(alpha);
+  return parsed.toRgba();
+}
+
 export interface CanvasBoardHandle {
   getCanvas: () => fabric.Canvas | null;
   loadObjects: (objects: any[]) => void;
@@ -197,15 +209,10 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
 
     if (canvas.isDrawingMode) {
       const brush = new fabric.PencilBrush(canvas);
-      brush.color = strokeColor;
+      brush.color =
+        tool === 'highlighter' ? withAlpha(strokeColor, HIGHLIGHTER_ALPHA) : strokeColor;
       brush.width =
         tool === 'highlighter' ? strokeWidth * 6 : tool === 'marker' ? strokeWidth * 3 : strokeWidth;
-      // NOTE: this does nothing — Fabric 6's PencilBrush has no `opacity`.
-      // Behaviour left as-is on purpose; the real fix (an alpha stroke colour)
-      // is Sprint 6 in docs/roadmap.md. Rewritten only to satisfy eslint.
-      if (tool === 'highlighter') {
-        (brush as any).opacity = 0.4;
-      }
       canvas.freeDrawingBrush = brush;
     }
   }, [tool, strokeColor, strokeWidth]);
@@ -783,6 +790,42 @@ function diffSnapshots(from: Snapshot, to: Snapshot) {
 
   const deleted = Array.from(before.keys()).filter((objectId) => !after.has(objectId));
   return { added, updated, deleted, reordered };
+}
+
+// ---------------------------------------------------------------------------
+// Screen <-> scene conversion.
+//
+// Everything shared between clients has to be expressed in *scene* coordinates:
+// the plane the objects themselves live in, which does not move when someone
+// pans or zooms. Cursors were being broadcast as raw `clientX/clientY`, so two
+// people looking at different parts of the board pointed at different things.
+//
+// The general matrix form is used rather than `(x - vpt[4]) / vpt[0]` so this
+// stays correct if the viewport ever picks up a rotation.
+// ---------------------------------------------------------------------------
+
+/** A mouse event's position in scene coordinates. */
+export function toScenePoint(
+  canvas: fabric.Canvas,
+  e: { clientX: number; clientY: number }
+): fabric.Point {
+  const rect = canvas.upperCanvasEl.getBoundingClientRect();
+  return fabric.util.transformPoint(
+    new fabric.Point(e.clientX - rect.left, e.clientY - rect.top),
+    fabric.util.invertTransform(canvas.viewportTransform)
+  );
+}
+
+/**
+ * The inverse: a scene point as an offset within the canvas element, under the
+ * given viewport. Takes the transform rather than the canvas so a caller can
+ * project many points against one sampled viewport.
+ */
+export function toViewportPoint(
+  vpt: fabric.TMat2D,
+  point: { x: number; y: number }
+): fabric.Point {
+  return fabric.util.transformPoint(new fabric.Point(point.x, point.y), vpt);
 }
 
 /**

@@ -165,7 +165,11 @@ export default function BoardEditor() {
           gridVisible={gridVisible}
           onThumbnail={handleThumbnail}
         />
-        <PresenceCursors socket={socketRef.current} boardId={boardId!} />
+        <PresenceCursors
+          socket={socketRef.current}
+          boardId={boardId!}
+          getCanvas={() => canvasHandleRef.current?.getCanvas() ?? null}
+        />
 
         <Toolbar
           onUndo={() => dispatchShortcut('z')}

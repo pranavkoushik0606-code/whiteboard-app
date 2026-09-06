@@ -72,7 +72,7 @@ one, falling back to a gradient placeholder.
 | Component | Role |
 |---|---|
 | `Toolbar` | Floating glass bar, bottom-centre: 13 tool buttons, stroke colour, fill colour, stroke width slider (1–20), undo, redo, grid toggle, comments, history, export, clear canvas |
-| `PresenceCursors` | Fixed full-screen overlay (`pointer-events-none`) drawing an SVG arrow + name badge per remote socket, in that user's colour |
+| `PresenceCursors` | Fixed full-screen overlay (`pointer-events-none`) drawing an SVG arrow + name badge per remote socket, in that user's colour. Cursors travel in scene coordinates and are re-projected through this viewer's own viewport, sampled once per animation frame |
 | `CommentsPanel` | Right drawer: loads `GET /comments/:boardId`, appends live via `comment:new`, post box (Enter to send), per-comment resolve toggle |
 | `VersionHistoryPanel` | Right drawer: a name field and Save button that captures a version (the snapshot is built server-side, so nothing but the label is sent), plus a list of versions with label, timestamp, author and a restore button. Restore reloads the canvas locally and is broadcast to the rest of the room as `board:restored` |
 | `ExportMenu` | Small popover: PNG / JPEG / PDF / JSON. `jspdf` is dynamically imported so it stays out of the initial bundle |
@@ -92,7 +92,10 @@ A `forwardRef` component exposing `{ getCanvas(), loadObjects(objects) }` via
    default stroke colour (`#1e1e1e` ↔ `#f5f5f5`) — but only while it is still the default, so
    a colour the user picked is left alone.
 3. **Brush** — sets `isDrawingMode` for `pencil|pen|highlighter|marker` and builds a
-   `PencilBrush`; highlighter is 6× width, marker 3×.
+   `PencilBrush`; highlighter is 6× width, marker 3×. The highlighter's brush colour is the
+   stroke colour at 40% alpha (`rgba(...)`), because Fabric 6's `PencilBrush` has no
+   `opacity` — setting one, as this did until Sprint 6, is a silent no-op. Putting the alpha
+   in the colour also means it serializes and persists for free.
 4. **Shape drawing** — `mouse:down` creates the shape at the pointer, `mouse:move` resizes
    it (lines update `x2/y2`, circles use radius, everything else width/height with negative-
    drag origin correction), `mouse:up` emits `object:add` and pushes history.
@@ -127,7 +130,11 @@ Two supporting rules make that safe:
   `canvas.toJSON(['objectId'])` produced anonymous snapshots. Anything that serializes the
   canvas goes through `serializeCanvas` now.
 
-**Exported helpers** (used by `BoardEditor`):
+**Exported helpers**:
+- `toScenePoint(canvas, event)` / `toViewportPoint(vpt, point)` — screen ↔ scene conversion,
+  used by `PresenceCursors` in both directions. Written in the general matrix form
+  (`invertTransform` + `transformPoint`) rather than `(x - vpt[4]) / vpt[0]`, so they stay
+  correct if the viewport ever picks up a rotation
 - `thumbnailDataUrl` — a ≤240 px JPEG cropped to the objects' bounding box. `toDataURL`'s crop
   is in **screen** pixels, so the viewport is flattened to identity first and restored after;
   without that, a board left scrolled into an empty corner photographs the empty corner. Called
@@ -149,4 +156,3 @@ translucent white / near-black surface) used by every floating bar and drawer, p
 custom scrollbars.
 
 `framer-motion` is used only for the entrance animation on the Login and Signup cards.
-`jspdf` is installed but not imported anywhere — PDF export is not implemented.

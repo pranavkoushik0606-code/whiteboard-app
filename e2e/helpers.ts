@@ -130,6 +130,31 @@ export async function dragOnCanvas(
   await page.mouse.up();
 }
 
+/** The canvas element's position on screen, for converting test coordinates. */
+export async function canvasRect(page: Page): Promise<{ x: number; y: number }> {
+  const box = await page.locator('canvas.upper-canvas').boundingBox();
+  if (!box) throw new Error('Canvas has no bounding box');
+  return { x: box.x, y: box.y };
+}
+
+/**
+ * Sets the viewport transform directly rather than driving space+drag or a
+ * wheel gesture. These tests are about what the coordinates mean, not about how
+ * the viewport got there — and `[a, b, c, d, translateX, translateY]` is exactly
+ * the state that panning and zooming produce.
+ */
+export async function setViewport(page: Page, vpt: number[]) {
+  await page.evaluate((matrix) => {
+    (window as any).__fabricCanvas.setViewportTransform(matrix);
+  }, vpt);
+}
+
+/** Moves the mouse to a point measured from the canvas element's top-left. */
+export async function moveMouseOnCanvas(page: Page, at: { x: number; y: number }) {
+  const rect = await canvasRect(page);
+  await page.mouse.move(rect.x + at.x, rect.y + at.y);
+}
+
 // ---------------------------------------------------------------------------
 // Raw API access, for asserting on status codes the UI never surfaces.
 // ---------------------------------------------------------------------------

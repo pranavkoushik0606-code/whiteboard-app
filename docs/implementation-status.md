@@ -1,6 +1,6 @@
 # Implementation status
 
-An honest inventory, current through Sprint 4. "Working" means the full path exists —
+An honest inventory, current through Sprint 6. "Working" means the full path exists —
 UI → API/socket → database — not just that a schema field or endpoint is present.
 
 ## Working end to end
@@ -19,7 +19,8 @@ UI → API/socket → database — not just that a schema field or endpoint is p
 
 **Canvas**
 - Infinite canvas, wheel zoom (0.2×–5×, about the pointer), Space+drag pan
-- Free draw: pencil, highlighter (6× width), marker (3× width); eraser by click hit-test
+- Free draw: pencil, highlighter (6× width at 40% alpha), marker (3× width); eraser by
+  click hit-test
 - Shapes: rectangle, circle, triangle, diamond, star, line, arrow
 - Text boxes and sticky notes (click to place)
 - Move / resize / rotate / multi-select via Fabric controls
@@ -33,7 +34,8 @@ UI → API/socket → database — not just that a schema field or endpoint is p
 
 **Collaboration**
 - Socket auth with the same JWT, per-board rooms
-- Live cursors with names and per-user colours (throttled to ~25 fps)
+- Live cursors with names and per-user colours (throttled to ~25 fps), sent in scene
+  coordinates so they point at the same thing however each person is panned or zoomed
 - Presence join/leave and an "N online" counter
 - Object add / update / delete broadcast and persisted in the same handler
 
@@ -102,13 +104,18 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
    taken before the board's saved objects had loaded, so it was an empty canvas; and
    snapshots ignored incoming remote changes, so undo could reach back over someone else's
    edit. `object:add` on the server is now an upsert, since undo/redo replays adds.
-5. Remote cursors use **viewport** coordinates (`clientX/Y`), not canvas coordinates, so
-   they point at the wrong place whenever two people are panned or zoomed differently.
+5. ~~Remote cursors use **viewport** coordinates (`clientX/Y`), not canvas coordinates.~~
+   **Fixed in Sprint 6** — `cursor:move` now carries scene coordinates, and the receiver
+   re-projects them through its own viewport. That second half matters as much as the
+   first: a cursor is pinned to a point on the *board*, so it has to move when the
+   **viewer** pans, not only when the sender does.
 6. ~~`restoreVersion` does not broadcast.~~ **Fixed in Sprint 4** — it emits `board:restored`
    into the board room. Restore was also unscoped: any version id could be restored into any
    board you could write to. It is now looked up as `{ _id, board }`.
-7. Highlighter transparency does not apply: the code sets `opacity` on a Fabric 6
-   `PencilBrush`, which has no such property. Highlighter is just a wider opaque stroke.
+7. ~~Highlighter transparency does not apply.~~ **Fixed in Sprint 6** — the alpha moved
+   into the brush colour (`rgba(…, 0.4)`), since Fabric 6's `PencilBrush` has no `opacity`
+   property and assigning one was a silent no-op. Keeping it in the colour also means it
+   serializes and persists without any extra plumbing.
 8. `Board.isFavorite` is a property of the board, not of the (user, board) pair — once board
    sharing gets a UI, one member favouriting a board favourites it for everyone.
 9. `GET /api/boards` has no pagination, and `filter=recent` only truncates the *shared* list,
@@ -144,7 +151,7 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
    counts object mutations on the server instead.
 3. ~~Make undo/redo emit: diff the restored snapshot against the live canvas and emit the
    corresponding `object:add` / `object:delete` / `object:update` events.~~ Done in Sprint 3.
-4. Convert cursor coordinates to canvas space before emitting.
+4. ~~Convert cursor coordinates to canvas space before emitting.~~ Done in Sprint 6.
 5. Build the share dialog on top of the existing invite endpoint, and a notification bell on
    top of the existing notifications endpoint — both are pure frontend work.
 6. Add an image tool that posts to `/uploads/image` and drops a `fabric.Image` on the canvas.
