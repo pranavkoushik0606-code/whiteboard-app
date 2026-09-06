@@ -19,7 +19,12 @@ Errors are `{ message, stack? }` (`stack` only when `NODE_ENV !== 'production'`)
 |---|---|---|
 | GET | `/api/health` | none |
 
-→ `{ status: 'ok', time: <ISO string> }`
+→ `{ status: 'ok', time: <ISO string>, ip: <caller's address> }`
+
+`ip` is `req.ip`, echoed back so a deployment can be checked for its `trust proxy`
+setting from outside. Call it against a deployed API: if it answers with your own
+address, the hop count is right; if it answers with the platform's proxy address,
+every visitor looks like the same person to the rate limiter.
 
 ---
 

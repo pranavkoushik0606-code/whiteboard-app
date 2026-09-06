@@ -26,6 +26,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const server = http.createServer(app);
 
+// Render (like every managed host) terminates TLS at its own proxy and forwards
+// plain HTTP, so without this `req.ip` is the proxy's address for every visitor
+// on earth and `req.protocol` is always "http". Both matter:
+//
+//  - express-rate-limit keys on `req.ip`. One shared bucket meant the auth
+//    limiter was 20 login attempts per 15 minutes for the entire site, not per
+//    person -- a handful of failures could lock everyone out.
+//  - `req.protocol` builds the upload URL, which was coming back as `http://`
+//    and getting embedded as an image `src` on an HTTPS page.
+//
+// A hop *count*, never `true`. `true` trusts the whole X-Forwarded-For chain,
+// which the client writes the left-hand end of -- that hands anyone a rate
+// limit bypass, and express-rate-limit rejects the combination outright.
+app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
+
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 
 // ---- Security & core middleware ----
@@ -79,7 +94,12 @@ app.use(
 );
 
 // ---- Routes ----
-app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
+// `ip` is the caller's own address, echoed back so a deploy can be checked for
+// the `trust proxy` setting above without shipping a request to find out. If it
+// comes back as the proxy's address rather than yours, the hop count is wrong.
+app.get('/api/health', (req, res) =>
+  res.json({ status: 'ok', time: new Date().toISOString(), ip: req.ip })
+);
 app.use('/api/auth', authRoutes);
 app.use('/api/boards', boardRoutes);
 app.use('/api/canvas', canvasRoutes);

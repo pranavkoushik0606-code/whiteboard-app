@@ -206,6 +206,14 @@ These endpoints/events are implemented and reachable, but **nothing in the clien
    (`toScenePoint`); the shape tools were not in scope for either. The fix is
    `canvas.getScenePoint(e)` — safe here, unlike in an independent window listener, because
    these run inside Fabric's own event handling.
+6a-bis. ~~The app did not know it was behind a proxy.~~ **Fixed after Sprint 9**, found by
+   probing the live deployment rather than by reading the code: every upload URL came back
+   as `http://` from an HTTPS host, which is `req.protocol` reading the socket instead of
+   `X-Forwarded-Proto`. The same misreading applies to `req.ip`, and express-rate-limit keys
+   on that — so behind a proxy the whole site shared one bucket and the auth limiter was 20
+   login attempts per 15 minutes across every user at once. `app.set('trust proxy', ...)`
+   with a hop count, never `true`. `GET /api/health` now echoes `req.ip` so the setting can
+   be checked against a real deployment from outside.
 6b. **Uploads are authenticated but not board-scoped.** `POST /uploads/image` takes a JWT
    and nothing else, so any signed-in user can fill the disk, and a viewer can upload a file
    they are not allowed to place. Nothing is ever deleted either — removing an image from a

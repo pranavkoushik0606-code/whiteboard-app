@@ -27,3 +27,9 @@ services:
 
       - key: CLIENT_URL
         sync: false
+
+      # One platform router sits in front of the process. Without this req.ip is
+      # Render's address for every visitor, so express-rate-limit puts the whole
+      # userbase in one bucket, and req.protocol reads http behind Render's TLS.
+      - key: TRUST_PROXY
+        value: 1
