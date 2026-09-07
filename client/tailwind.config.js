@@ -10,9 +10,13 @@ export default {
       },
       colors: {
         primary: {
-          50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8',
-          500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81',
+          50: '#fdf2ff', 100: '#fae8ff', 200: '#f5d0fe', 300: '#f0abfc', 400: '#e879f9',
+          500: '#d946ef', 600: '#a855f7', 700: '#7e22ce', 800: '#6b21a8', 900: '#581c87',
         },
+        coral: { 100: '#ffe4e6', 300: '#fda4af', 400: '#fb7185', 500: '#f43f5e', 600: '#e11d48' },
+        amber: { 100: '#fef3c7', 300: '#fcd34d', 400: '#fbbf24', 500: '#f59e0b', 600: '#d97706' },
+        lime: { 100: '#ecfccb', 300: '#bef264', 400: '#a3e635', 500: '#84cc16', 600: '#65a30d' },
+        sky: { 100: '#e0f2fe', 300: '#7dd3fc', 400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7' },
         accent: {
           50: '#fdf4ff', 100: '#fae8ff', 300: '#f0abfc', 400: '#e879f9',
           500: '#d946ef', 600: '#c026d3', 700: '#a21caf',
@@ -39,6 +43,22 @@ export default {
           '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
         float: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-6px)' } },
+        'slide-in-right': {
+          '0%': { opacity: '0', transform: 'translateX(28px)' },
+          '100%': { opacity: '1', transform: 'translateX(0)' },
+        },
+        'drop-in': {
+          '0%': { opacity: '0', transform: 'translate(-50%,-14px) scale(.94)' },
+          '100%': { opacity: '1', transform: 'translate(-50%,0) scale(1)' },
+        },
+        wiggle: {
+          '0%,100%': { transform: 'rotate(-2deg)' },
+          '50%': { transform: 'rotate(2deg)' },
+        },
+        aurora: {
+          '0%,100%': { filter: 'hue-rotate(0deg)' },
+          '50%': { filter: 'hue-rotate(35deg)' },
+        },
         'pulse-ring': {
           '0%': { boxShadow: '0 0 0 0 rgba(99,102,241,.45)' },
           '70%': { boxShadow: '0 0 0 12px rgba(99,102,241,0)' },
@@ -51,6 +71,10 @@ export default {
         'pop-in': 'pop-in .45s cubic-bezier(.21,1.02,.73,1) both',
         float: 'float 4s ease-in-out infinite',
         'pulse-ring': 'pulse-ring 2s cubic-bezier(.4,0,.6,1) infinite',
+        'slide-in-right': 'slide-in-right .35s cubic-bezier(.21,1.02,.73,1) both',
+        'drop-in': 'drop-in .35s cubic-bezier(.21,1.02,.73,1) both',
+        wiggle: 'wiggle .4s ease-in-out',
+        aurora: 'aurora 14s ease-in-out infinite',
       },
     },
   },

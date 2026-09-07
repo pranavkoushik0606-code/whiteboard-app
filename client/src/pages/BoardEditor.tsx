@@ -180,7 +180,7 @@ export default function BoardEditor() {
 
   return (
     <div className="h-screen flex flex-col">
-      <header className="h-16 shrink-0 glass border-b border-neutral-200/50 dark:border-neutral-800 px-4 flex items-center justify-between z-20">
+      <header className="h-16 shrink-0 glass border-b border-neutral-200/50 dark:border-neutral-800 px-4 flex items-center justify-between z-20 animate-pop-in">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate('/dashboard')} className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
             <ArrowLeft size={18} />
@@ -251,7 +251,7 @@ export default function BoardEditor() {
         {notice && (
           <div
             data-testid="board-notice"
-            className="absolute top-4 left-1/2 -translate-x-1/2 z-40 max-w-[90vw] px-4 py-2 rounded-xl bg-neutral-900 text-white text-sm shadow-lg dark:bg-neutral-100 dark:text-neutral-900"
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-40 max-w-[90vw] px-4 py-2 rounded-xl bg-primary-600 text-white text-sm shadow-glow-lg animate-drop-in"
           >
             {notice}
             <button

@@ -24,16 +24,19 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(38rem 38rem at 12% 18%, rgba(99, 102, 241, .28), transparent 60%),
-    radial-gradient(32rem 32rem at 85% 15%, rgba(217, 70, 239, .24), transparent 60%),
-    radial-gradient(34rem 34rem at 55% 88%, rgba(6, 182, 212, .24), transparent 60%);
-  animation: drift 22s ease-in-out infinite;
+    radial-gradient(32rem 32rem at 10% 14%, rgba(168, 85, 247, .38), transparent 60%),
+    radial-gradient(30rem 30rem at 88% 10%, rgba(244, 63, 94, .32), transparent 60%),
+    radial-gradient(30rem 30rem at 92% 72%, rgba(14, 165, 233, .34), transparent 60%),
+    radial-gradient(28rem 28rem at 22% 86%, rgba(132, 204, 22, .28), transparent 60%),
+    radial-gradient(26rem 26rem at 55% 50%, rgba(251, 191, 36, .22), transparent 60%);
+  animation: drift 22s ease-in-out infinite, aurora 14s ease-in-out infinite;
 }
 .dark body::before {
   background:
-    radial-gradient(38rem 38rem at 12% 18%, rgba(99, 102, 241, .30), transparent 60%),
-    radial-gradient(32rem 32rem at 85% 15%, rgba(217, 70, 239, .22), transparent 60%),
-    radial-gradient(34rem 34rem at 55% 88%, rgba(6, 182, 212, .20), transparent 60%);
+    radial-gradient(32rem 32rem at 10% 14%, rgba(168, 85, 247, .34), transparent 60%),
+    radial-gradient(30rem 30rem at 88% 10%, rgba(244, 63, 94, .24), transparent 60%),
+    radial-gradient(30rem 30rem at 92% 72%, rgba(14, 165, 233, .26), transparent 60%),
+    radial-gradient(28rem 28rem at 22% 86%, rgba(132, 204, 22, .18), transparent 60%);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -90,7 +93,7 @@ body::before {
   /* Primary actions are already .bg-primary-600 across the app, so the
      gradient is layered onto that class rather than added to markup. */
   .bg-primary-600 {
-    background-image: linear-gradient(135deg, #6366f1 0%, #8b5cf6 45%, #d946ef 100%);
+    background-image: linear-gradient(135deg, #f43f5e 0%, #a855f7 40%, #6366f1 70%, #0ea5e9 100%);
     background-size: 180% 180%;
     background-position: 0% 50%;
     box-shadow: 0 8px 22px -8px rgba(99, 102, 241, .7);
@@ -103,7 +106,7 @@ body::before {
   }
 
   .gradient-text {
-    background: linear-gradient(120deg, #4f46e5, #a855f7 40%, #06b6d4 80%);
+    background: linear-gradient(110deg, #f43f5e, #f59e0b 22%, #a855f7 48%, #0ea5e9 72%, #84cc16 95%);
     background-size: 200% auto;
     -webkit-background-clip: text;
     background-clip: text;
@@ -129,4 +132,27 @@ body::before {
   .stagger > *:nth-child(5) { animation-delay: .18s }
   .stagger > *:nth-child(6) { animation-delay: .22s }
   .stagger > *:nth-child(n+7) { animation-delay: .26s }
+}
+
+@layer components {
+  /* Side panels in the editor arrive rather than appear. */
+  .panel-in { animation: slide-in-right .35s cubic-bezier(.21, 1.02, .73, 1) both; }
+
+  /* A tinted ring that follows the accent hue of whatever it wraps. */
+  .ring-rainbow { position: relative; }
+  .ring-rainbow::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(120deg, #f43f5e, #a855f7, #0ea5e9, #84cc16);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity .25s;
+    pointer-events: none;
+  }
+  .ring-rainbow:hover::after { opacity: .9; }
 }

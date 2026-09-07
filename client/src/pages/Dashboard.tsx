@@ -12,6 +12,14 @@ import { useTheme } from '../context/ThemeContext';
 
 type Filter = 'recent' | 'favorite' | 'shared' | 'all';
 
+// A stable colour per board, derived from its id so it never changes between
+// loads and two boards side by side rarely collide. Purely decorative.
+const hueOf = (id: string) => {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
+  return h;
+};
+
 export default function Dashboard() {
   const { owned, shared, fetchBoards, createBoard, renameBoard, deleteBoard, duplicateBoard, toggleFavorite } =
     useBoardStore();
@@ -132,17 +140,32 @@ export default function Dashboard() {
             {boards.map((b) => (
               <div
                 key={b._id}
-                className="group card-hover relative rounded-2xl border border-neutral-200/70 dark:border-neutral-800 overflow-hidden cursor-pointer glass"
+                className="group card-hover ring-rainbow relative rounded-2xl border border-neutral-200/70 dark:border-neutral-800 overflow-hidden cursor-pointer glass"
                 onClick={() => navigate(`/board/${b._id}`)}
               >
+                <div
+                  className="h-1 w-full"
+                  style={{
+                    background: `linear-gradient(90deg, hsl(${hueOf(b._id)} 90% 62%), hsl(${
+                      (hueOf(b._id) + 60) % 360
+                    } 90% 60%))`,
+                  }}
+                />
                 {b.thumbnail ? (
                   <img
                     src={b.thumbnail}
                     alt=""
-                    className="h-28 w-full object-cover bg-white dark:bg-neutral-900"
+                    className="h-28 w-full object-cover bg-white dark:bg-neutral-900 transition-transform duration-500 group-hover:scale-105"
                   />
                 ) : (
-                  <div className="h-28 bg-gradient-to-br from-primary-100 to-primary-50 dark:from-neutral-800 dark:to-neutral-900" />
+                  <div
+                    className="h-28 transition-transform duration-500 group-hover:scale-105"
+                    style={{
+                      background: `linear-gradient(135deg, hsl(${hueOf(b._id)} 90% 88%), hsl(${
+                        (hueOf(b._id) + 45) % 360
+                      } 92% 76%))`,
+                    }}
+                  />
                 )}
                 <div className="p-3 flex items-center justify-between">
                   {renamingId === b._id ? (
