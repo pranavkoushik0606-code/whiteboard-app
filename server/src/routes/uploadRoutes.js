@@ -1,43 +1,18 @@
 import express from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-import crypto from 'crypto';
-import { fileURLToPath } from 'url';
 import { protect } from '../middleware/auth.js';
 import { uploadImage } from '../controllers/uploadController.js';
+import { EXTENSIONS, MAX_IMAGE_BYTES } from '../services/imageStore.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const uploadsDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
-export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+export { MAX_IMAGE_BYTES };
 
 /**
- * The stored extension is looked up here and never taken from the upload.
- *
- * `path.extname(file.originalname)` let the client pick it, and `mimetype` is
- * only the Content-Type the client wrote on the multipart part — so a file
- * called `evil.html`, declared `image/png`, was written to disk as
- * `<id>.html` and handed back by `express.static` as `text/html`. That is
- * stored XSS on the API's own origin, which is the origin every session token
- * is sent to.
- *
- * `image/jpg` is not a real media type, but it was in the old allowlist and
- * some clients send it, so it stays — mapped to the same extension as JPEG.
+ * Memory, not disk. Where the bytes end up is the store's decision now — see
+ * services/imageStore.js — and a Cloudinary upload has no local file to move
+ * or clean up. The 10 MB cap below is what keeps this from being a way to
+ * spend the process's memory.
  */
-const EXTENSIONS = {
-  'image/png': '.png',
-  'image/jpeg': '.jpg',
-  'image/jpg': '.jpg',
-  'image/gif': '.gif',
-  'image/webp': '.webp',
-};
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => cb(null, `${crypto.randomUUID()}${EXTENSIONS[file.mimetype]}`),
-});
+const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
   if (!EXTENSIONS[file.mimetype]) {

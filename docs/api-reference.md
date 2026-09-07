@@ -26,6 +26,7 @@ Errors are `{ message, stack? }` (`stack` only when `NODE_ENV !== 'production'`)
 | `ip` | `req.ip`. Should be the caller's own address. Anything else — a private `10.x` router or a Cloudflare edge — means `trust proxy` is not resolving the chain, and visitors share a rate-limit bucket |
 | `commit` | first 7 characters of `RENDER_GIT_COMMIT` / `SOURCE_VERSION` / `GIT_COMMIT`, or `null` where none is set (local runs). The build actually serving |
 | `trustProxy` | the raw `TRUST_PROXY` value, or `'default'` when unset |
+| `imageStore` | `'cloudinary'` when credentials are configured, `'disk'` otherwise. `'disk'` on a host with an ephemeral filesystem means uploads will 404 after the next restart |
 
 The last two exist because a wrong `ip` on its own is ambiguous: it reads identically
 whether a fix has not deployed yet or has deployed and is being overridden by the

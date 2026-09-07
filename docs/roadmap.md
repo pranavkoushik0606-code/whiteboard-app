@@ -348,11 +348,15 @@ both kept deliberately: the first saves a pointless 10 MB round trip, the second
 demotion that lands while the upload is in flight. The second is not independently testable
 without racing the network, so it is not.
 
-⚠ Still true: uploads land on the container filesystem, and on Render's free tier they
-vanish on every restart. Nothing here changes that — the boards will keep the `src`, the
-file behind it will be gone. Move to S3 or Cloudinary before this counts as done in
-production. `POST /uploads/image` is also authenticated but not board-scoped, and nothing
-ever deletes a file; both are worth solving in the same pass.
+⚠ At the time of this sprint uploads landed on the container filesystem, and on Render's
+free tier they vanished on every restart. **Closed afterwards** — `services/imageStore.js`
+sends them to Cloudinary when `CLOUDINARY_URL` is set, keeping the disk as a no-account
+development mode. `/api/health` reports which one is live, since being on the wrong one is
+invisible until an image 404s later.
+
+⚠ Still true: `POST /uploads/image` is authenticated but not board-scoped, and nothing ever
+deletes an asset, so Cloudinary now accumulates every image ever uploaded rather than losing
+them. Both are worth solving in the same pass.
 
 ### Sprint 10 — Performance under load · 70 min
 

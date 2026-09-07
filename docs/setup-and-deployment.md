@@ -53,7 +53,10 @@ reachable database.
 | `JWT_SECRET` | — | **required**; no fallback, tokens can't be signed without it |
 | `JWT_EXPIRES_IN` | `7d` | |
 | `EMAIL_FROM` | `noreply@whiteboard.dev` | only matters once a real SMTP provider replaces Ethereal |
-| `PUBLIC_URL` | the request's own `protocol://host` | origin used to build the absolute URL returned by the image upload. Worth setting in production: the fallback reads a client-supplied `Host` header, and that URL ends up as an object's `src` on a shared board |
+| `PUBLIC_URL` | the request's own `protocol://host` | origin used to build the absolute URL returned by the image upload. Only used by the local-disk store. Worth setting when you are on it: the fallback reads a client-supplied `Host` header, and that URL ends up as an object's `src` on a shared board |
+| `CLOUDINARY_URL` | unset → local disk | `cloudinary://<key>:<secret>@<cloud>`, copied from the Cloudinary dashboard's *API Environment variable*. **Set this on any host with an ephemeral filesystem**, which includes every Render tier: without it uploads go to the container and are wiped on restart, and a free service sleeps after ~15 minutes idle, so images start 404ing the same day. Contains a secret — host env only |
+| `CLOUDINARY_CLOUD_NAME` / `_API_KEY` / `_API_SECRET` | unset | the split form of the above. All three are required together; two of three reads as *not configured*, so a half-filled dashboard fails visibly instead of quietly writing to a disk that is about to vanish |
+| `CLOUDINARY_FOLDER` | `whiteboard` | folder assets are uploaded into |
 | `TRUST_PROXY` | private ranges + Cloudflare's | which `X-Forwarded-For` entries to believe. The default walks right to left past every private address *and* every Cloudflare edge, stopping at the first address that is neither — no hop count needed, which matters because the platform's is not fixed. Cloudflare is in the list because Render serves `*.onrender.com` through it, so the chain is `client → Cloudflare → Render`. Leave it unset. **Never set it to `true`**: that trusts the whole chain, and the client writes the left-hand end of it, so it hands out a rate-limit bypass to anyone who sends a header. A bare number is read as a hop count, which is almost never what you want here |
 
 **`client/.env`**
@@ -126,23 +129,36 @@ catch-all rewrite to `/index.html` so client-side routes deep-link correctly.
    and `CLIENT_URL` in the dashboard.
 3. **Vercel** — import the `client/` directory; set `VITE_API_URL` and `VITE_SOCKET_URL` to
    the Render URL.
-4. **Uploads** — Render's free tier has an ephemeral filesystem, so `server/uploads/` is
-   wiped on every deploy/restart. Since Sprint 9 the client actually puts images on boards,
-   so this now has a visible consequence: the board keeps the object and its `src`, and the
-   file behind it is gone after the next restart. Move to object storage (S3/Cloudinary)
-   before relying on image upload in production: swap the Multer disk storage in
-   `server/src/routes/uploadRoutes.js` for `multer-storage-cloudinary` or an S3 storage
-   engine. Keep the extension allowlist when you do — it is what stops the bucket serving a
-   caller-named `.html`. Two related gaps are worth closing in the same pass: the endpoint is
-   authenticated but not board-scoped, and nothing ever deletes a file.
-   Set `PUBLIC_URL` to the API's own origin while you are there, so the returned absolute
-   URL does not come from a request header.
+4. **Uploads → Cloudinary** — set `CLOUDINARY_URL` in the Render dashboard. Sign in at
+   cloudinary.com, and the dashboard shows an *API Environment variable* of the form
+   `cloudinary://<key>:<secret>@<cloud>`; paste it whole. Nothing else is needed — the free
+   tier is ample and the app creates the folder on first upload.
+
+   Skipping this is not a small thing. Without it images go to the container filesystem,
+   which Render wipes on every restart, and a free service sleeps after ~15 minutes of no
+   traffic. The board keeps the object and its `src`; the file behind it is gone, usually
+   the same day. `/api/health` reports `imageStore`, so you can check rather than wait to
+   find out.
+
+   Two gaps this does not close: the endpoint is authenticated but not board-scoped, and
+   nothing ever deletes an asset, so Cloudinary accumulates every image ever uploaded.
+
+   `PUBLIC_URL` only matters if you stay on the local-disk store.
 5. **Check `trust proxy` landed** — `curl https://<your-api>/api/health` answers with three
    fields that matter:
 
    ```json
-   { "ip": "203.0.113.9", "commit": "946e6b3", "trustProxy": "default" }
+   {
+     "ip": "203.0.113.9",
+     "commit": "360402f",
+     "trustProxy": "default",
+     "imageStore": "cloudinary"
+   }
    ```
+
+   `imageStore` should say `cloudinary` after step 4. If it says `disk`, the credentials are
+   missing or only partly filled in — the split form needs all three parts, and two of three
+   deliberately reads as unconfigured rather than half-working.
 
    `ip` should be *your* address. If it is not, `commit` and `trustProxy` say why: an old
    `commit` means the deploy has not landed, and a `trustProxy` other than `default` means

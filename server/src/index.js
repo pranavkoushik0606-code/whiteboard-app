@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 
 import { connectDB } from './config/db.js';
 import { trustProxySetting } from './config/trustProxy.js';
+import { usingCloudinary } from './services/imageStore.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 import { initSocket } from './socket/socketHandler.js';
 import { migrateFavorites } from './services/favoriteMigration.js';
@@ -126,6 +127,10 @@ app.get('/api/health', (req, res) =>
     ip: req.ip,
     commit: COMMIT && COMMIT.slice(0, 7),
     trustProxy: process.env.TRUST_PROXY ?? 'default',
+    // Same reason as the two above. Whether Cloudinary is configured is
+    // invisible until an upload 404s an hour later, by which time the file is
+    // gone; this makes it one call to check.
+    imageStore: usingCloudinary() ? 'cloudinary' : 'disk',
   })
 );
 app.use('/api/auth', authRoutes);

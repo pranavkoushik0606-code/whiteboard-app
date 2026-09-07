@@ -130,6 +130,10 @@ client/vercel.json         SPA build + rewrite-all-to-index.html
   from the snapshot. Capped at the 50 most recent versions per board.
 - **No OT / CRDT.** Conflict resolution is last-write-wins per object. Two people dragging
   the same shape will fight; two people on different shapes are fine.
-- **Local disk instead of Cloudinary** and **Ethereal instead of real SMTP** — both chosen
-  so the project boots with no external accounts. Swap points are documented in
-  [setup-and-deployment.md](setup-and-deployment.md).
+- **Cloudinary for images when configured, local disk when not** (`services/imageStore.js`).
+  The disk path is not a lesser production option, it is a no-account development mode: any
+  host with an ephemeral filesystem loses the files, and Render's free tier loses them within
+  the hour. The choice is reported by `/api/health` as `imageStore`, because being on the
+  wrong one is otherwise invisible until an image 404s later.
+- **Ethereal instead of real SMTP** — chosen so the project boots with no external accounts.
+  Swap points are documented in [setup-and-deployment.md](setup-and-deployment.md).

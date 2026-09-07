@@ -28,6 +28,13 @@ services:
       - key: CLIENT_URL
         sync: false
 
+      # Without this uploads go to the container filesystem, which is wiped on
+      # every restart -- and a free service sleeps after ~15 minutes idle, so
+      # images start 404ing the same day. /api/health reports which store is
+      # live; check it says "cloudinary" after deploying.
+      - key: CLOUDINARY_URL
+        sync: false
+
       # TRUST_PROXY is deliberately not set. It overrides the app's default,
       # which trusts every private address in X-Forwarded-For and takes the
       # first public one. A count was tried here and was wrong: `1` reported a
