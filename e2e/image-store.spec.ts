@@ -114,7 +114,8 @@ test('a CLOUDINARY_URL that cannot work is rejected, not handed to the SDK', () 
     expect(cloudinaryUrlProblem()).toContain('includes the variable name');
   });
 
-  // Whitespace from a paste is survivable, not a misconfiguration.
+  // Whitespace from a paste is survivable, not a misconfiguration -- the SDK's
+  // own URL parse drops it, so cloud_name, api_key and api_secret all survive.
   withEnv({ CLOUDINARY_URL: '  cloudinary://k:s@cloud\n' }, () => {
     expect(usingCloudinary()).toBe(true);
     expect(cloudinaryUrlProblem()).toBeNull();

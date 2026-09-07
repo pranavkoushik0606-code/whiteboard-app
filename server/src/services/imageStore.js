@@ -83,10 +83,12 @@ async function configureCloudinary() {
   // CLOUDINARY_URL can only fail an upload, never the process. See above.
   const { v2: cloudinary } = await import('cloudinary');
 
-  if (process.env.CLOUDINARY_URL) {
-    // Trailing whitespace survives a dashboard paste and the SDK does not trim.
-    process.env.CLOUDINARY_URL = process.env.CLOUDINARY_URL.trim();
-  } else {
+  // Nothing to do for CLOUDINARY_URL: the SDK reads it during the import above.
+  // An earlier version trimmed it here, which was dead code twice over -- after
+  // the import is too late, and the SDK's URL parse already drops surrounding
+  // whitespace anyway. Checked rather than assumed: a trailing space leaves
+  // cloud_name, api_key and api_secret all intact.
+  if (!process.env.CLOUDINARY_URL) {
     // The split form is not read from the environment by the SDK.
     cloudinary.config({
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
