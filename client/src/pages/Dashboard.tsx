@@ -51,7 +51,7 @@ export default function Dashboard() {
     <div className="min-h-screen">
       {/* Top bar */}
       <header className="sticky top-0 z-10 glass border-b border-neutral-200/50 dark:border-neutral-800 px-6 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Boards</h1>
+        <h1 className="text-2xl font-bold gradient-text tracking-tight">Boards</h1>
         <div className="flex items-center gap-3">
           <NotificationBell socket={socketRef.current} />
           <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
@@ -128,11 +128,11 @@ export default function Dashboard() {
             No boards yet — create your first one to get started.
           </div>
         ) : view === 'grid' ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5 stagger">
             {boards.map((b) => (
               <div
                 key={b._id}
-                className="group relative rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden hover:shadow-lg transition cursor-pointer"
+                className="group card-hover relative rounded-2xl border border-neutral-200/70 dark:border-neutral-800 overflow-hidden cursor-pointer glass"
                 onClick={() => navigate(`/board/${b._id}`)}
               >
                 {b.thumbnail ? (
@@ -176,7 +176,7 @@ export default function Dashboard() {
             ))}
           </div>
         ) : (
-          <div className="divide-y divide-neutral-200 dark:divide-neutral-800 border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden">
+          <div className="glass divide-y divide-neutral-200/60 dark:divide-neutral-800 border border-neutral-200/70 dark:border-neutral-800 rounded-2xl overflow-hidden stagger">
             {boards.map((b) => (
               <div
                 key={b._id}

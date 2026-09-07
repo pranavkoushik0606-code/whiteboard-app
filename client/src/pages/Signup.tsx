@@ -27,15 +27,20 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-white dark:from-neutral-950 dark:to-neutral-900 px-4">
+    <div className="min-h-screen flex items-center justify-center px-4">
       <motion.form
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         onSubmit={handleSubmit}
-        className="glass w-full max-w-md rounded-2xl shadow-xl p-8 border border-neutral-200/50 dark:border-neutral-800"
+        className="glass w-full max-w-md rounded-3xl p-8 border"
       >
-        <h1 className="text-2xl font-semibold mb-1">Create your account</h1>
-        <p className="text-sm text-neutral-500 mb-6">Start collaborating in seconds</p>
+        <div className="mb-6 flex flex-col items-center text-center">
+          <div className="mb-4 h-14 w-14 rounded-2xl bg-primary-600 animate-float grid place-items-center text-white text-2xl font-bold shadow-glow">
+            W
+          </div>
+          <h1 className="text-3xl font-bold gradient-text">Create your account</h1>
+          <p className="text-sm text-neutral-500 mt-1">Start collaborating in seconds</p>
+        </div>
 
         {error && <div className="mb-4 text-sm text-red-600 bg-red-50 p-2 rounded-lg">{error}</div>}
 

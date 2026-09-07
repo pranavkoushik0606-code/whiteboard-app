@@ -47,14 +47,16 @@ export default function Toolbar({
   const visibleTools = canEdit ? tools : tools.filter((t) => t.id === 'select');
 
   return (
-    <div className="absolute left-1/2 -translate-x-1/2 bottom-6 z-20 glass rounded-2xl shadow-xl border border-neutral-200/50 dark:border-neutral-800 px-3 py-2 flex items-center gap-1 flex-wrap max-w-[95vw]">
+    <div className="absolute left-1/2 -translate-x-1/2 bottom-6 z-20 glass rounded-3xl border px-3 py-2 flex items-center gap-1 flex-wrap max-w-[95vw] animate-pop-in">
       {visibleTools.map((t) => (
         <button
           key={t.id}
           title={t.label}
           onClick={() => setTool(t.id)}
           className={`p-2 rounded-xl transition ${
-            tool === t.id ? 'bg-primary-600 text-white' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+            tool === t.id
+              ? 'bg-primary-600 text-white -translate-y-0.5'
+              : 'hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300'
           }`}
         >
           {t.icon}
@@ -66,7 +68,7 @@ export default function Toolbar({
           <button
             title="Insert image"
             onClick={onImageClick}
-            className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            className="p-2 rounded-xl hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300"
           >
             <ImageIcon size={18} />
           </button>
@@ -99,10 +101,10 @@ export default function Toolbar({
 
           <div className="w-px h-6 bg-neutral-300 dark:bg-neutral-700 mx-1" />
 
-          <button title="Undo" onClick={onUndo} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <button title="Undo" onClick={onUndo} className="p-2 rounded-xl hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
             <Undo2 size={18} />
           </button>
-          <button title="Redo" onClick={onRedo} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <button title="Redo" onClick={onRedo} className="p-2 rounded-xl hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
             <Redo2 size={18} />
           </button>
         </>
@@ -110,17 +112,17 @@ export default function Toolbar({
       <button
         title="Toggle grid"
         onClick={toggleGrid}
-        className={`p-2 rounded-xl ${gridVisible ? 'bg-primary-600 text-white' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+        className={`p-2 rounded-xl transition ${gridVisible ? 'bg-primary-600 text-white -translate-y-0.5' : 'hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300'}`}
       >
         <Grid3x3 size={18} />
       </button>
-      <button title="Comments" onClick={onCommentsClick} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800">
+      <button title="Comments" onClick={onCommentsClick} className="p-2 rounded-xl hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
         <MessageSquare size={18} />
       </button>
-      <button title="Version history" onClick={onHistoryClick} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800">
+      <button title="Version history" onClick={onHistoryClick} className="p-2 rounded-xl hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
         <History size={18} />
       </button>
-      <button title="Export" onClick={onExportClick} className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800">
+      <button title="Export" onClick={onExportClick} className="p-2 rounded-xl hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
         <Download size={18} />
       </button>
       {canEdit && (
