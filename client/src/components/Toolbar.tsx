@@ -47,15 +47,19 @@ export default function Toolbar({
   const visibleTools = canEdit ? tools : tools.filter((t) => t.id === 'select');
 
   return (
-    <div className="absolute left-1/2 -translate-x-1/2 bottom-6 z-20 glass rounded-3xl border px-3 py-2 flex items-center gap-1 flex-wrap max-w-[95vw] animate-pop-in">
+    <div role="toolbar"
+      aria-label="Board tools"
+      className="absolute left-1/2 -translate-x-1/2 bottom-4 sm:bottom-6 z-20 glass rounded-3xl border px-2 sm:px-3 py-2 flex items-center gap-0.5 sm:gap-1 max-w-[calc(100vw-1rem)] flex-wrap justify-center animate-pop-in">
       {visibleTools.map((t) => (
         <button
           key={t.id}
           title={t.label}
+          aria-label={t.label}
+          aria-pressed={tool === t.id}
           onClick={() => setTool(t.id)}
           className={`p-2 rounded-xl transition ${
             tool === t.id
-              ? 'bg-primary-600 text-white -translate-y-0.5'
+              ? 'bg-primary-600 text-white -translate-y-0.5 ring-2 ring-primary-300/60 dark:ring-primary-500/40'
               : 'hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300'
           }`}
         >
@@ -68,26 +72,26 @@ export default function Toolbar({
           <button
             title="Insert image"
             onClick={onImageClick}
-            className="p-2 rounded-xl hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300"
+            className="p-2 rounded-xl shrink-0 hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300"
           >
             <ImageIcon size={18} />
           </button>
 
-          <div className="w-px h-6 bg-neutral-300 dark:bg-neutral-700 mx-1" />
+          <div className="w-px h-6 shrink-0 bg-neutral-300 dark:bg-neutral-700 mx-1" />
 
           <input
             type="color"
             title="Stroke color"
             value={strokeColor}
             onChange={(e) => setStrokeColor(e.target.value)}
-            className="w-8 h-8 rounded-lg cursor-pointer bg-transparent"
+            className="w-8 h-8 shrink-0 rounded-lg cursor-pointer bg-transparent"
           />
           <input
             type="color"
             title="Fill color"
             value={fillColor === 'transparent' ? '#ffffff' : fillColor}
             onChange={(e) => setFillColor(e.target.value)}
-            className="w-8 h-8 rounded-lg cursor-pointer bg-transparent"
+            className="w-8 h-8 shrink-0 rounded-lg cursor-pointer bg-transparent"
           />
           <input
             type="range"
@@ -99,12 +103,12 @@ export default function Toolbar({
             className="w-20"
           />
 
-          <div className="w-px h-6 bg-neutral-300 dark:bg-neutral-700 mx-1" />
+          <div className="w-px h-6 shrink-0 bg-neutral-300 dark:bg-neutral-700 mx-1" />
 
-          <button title="Undo" onClick={onUndo} className="p-2 rounded-xl hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
+          <button title="Undo" onClick={onUndo} className="p-2 rounded-xl shrink-0 hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
             <Undo2 size={18} />
           </button>
-          <button title="Redo" onClick={onRedo} className="p-2 rounded-xl hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
+          <button title="Redo" onClick={onRedo} className="p-2 rounded-xl shrink-0 hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
             <Redo2 size={18} />
           </button>
         </>
@@ -112,17 +116,18 @@ export default function Toolbar({
       <button
         title="Toggle grid"
         onClick={toggleGrid}
-        className={`p-2 rounded-xl transition ${gridVisible ? 'bg-primary-600 text-white -translate-y-0.5' : 'hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300'}`}
+        aria-pressed={gridVisible}
+        className={`p-2 rounded-xl transition shrink-0 ${gridVisible ? 'bg-primary-600 text-white -translate-y-0.5' : 'hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300'}`}
       >
         <Grid3x3 size={18} />
       </button>
-      <button title="Comments" onClick={onCommentsClick} className="p-2 rounded-xl hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
+      <button title="Comments" onClick={onCommentsClick} className="p-2 rounded-xl shrink-0 hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
         <MessageSquare size={18} />
       </button>
-      <button title="Version history" onClick={onHistoryClick} className="p-2 rounded-xl hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
+      <button title="Version history" onClick={onHistoryClick} className="p-2 rounded-xl shrink-0 hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
         <History size={18} />
       </button>
-      <button title="Export" onClick={onExportClick} className="p-2 rounded-xl hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
+      <button title="Export" onClick={onExportClick} className="p-2 rounded-xl shrink-0 hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-neutral-800 dark:hover:text-primary-300">
         <Download size={18} />
       </button>
       {canEdit && (

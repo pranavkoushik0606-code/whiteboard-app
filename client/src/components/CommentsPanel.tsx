@@ -168,13 +168,13 @@ export default function CommentsPanel({
   };
 
   return (
-    <div className="panel-in fixed right-0 top-0 h-full w-80 glass border-l border-neutral-200/50 dark:border-neutral-800 z-40 flex flex-col shadow-2xl">
+    <div className="panel-in fixed right-0 top-0 h-full w-full sm:w-80 max-w-full glass border-l border-neutral-200/50 dark:border-neutral-800 z-40 flex flex-col shadow-2xl">
       <div className="flex items-center justify-between p-4 border-b border-neutral-200/50 dark:border-neutral-800">
         <h2 className="font-medium">Comments</h2>
         <button title="Close comments" onClick={onClose}><X size={18} /></button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div data-panel className="flex-1 overflow-y-auto p-4 space-y-3">
         {comments.length === 0 && <p className="text-sm text-neutral-500">No comments yet.</p>}
         {comments.map((c) => (
           <div key={c._id} className={`p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 ${c.resolved ? 'opacity-50' : ''}`}>

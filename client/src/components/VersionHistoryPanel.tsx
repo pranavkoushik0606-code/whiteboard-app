@@ -45,7 +45,7 @@ export default function VersionHistoryPanel({
   };
 
   return (
-    <div className="panel-in fixed right-0 top-0 h-full w-80 glass border-l border-neutral-200/50 dark:border-neutral-800 z-40 flex flex-col shadow-2xl">
+    <div className="panel-in fixed right-0 top-0 h-full w-full sm:w-80 max-w-full glass border-l border-neutral-200/50 dark:border-neutral-800 z-40 flex flex-col shadow-2xl">
       <div className="flex items-center justify-between p-4 border-b border-neutral-200/50 dark:border-neutral-800">
         <h2 className="font-medium">Version history</h2>
         <button onClick={onClose} title="Close version history"><X size={18} /></button>

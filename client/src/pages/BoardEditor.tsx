@@ -175,14 +175,30 @@ export default function BoardEditor() {
   }, [socketRef.current, handleRestore, currentUserId, boardId, navigate]);
 
   if (!board) {
-    return <div className="h-screen flex items-center justify-center">Loading board…</div>;
+    return (
+      <div className="h-screen flex flex-col" aria-busy="true" aria-live="polite">
+        <div className="h-16 shrink-0 glass border-b border-neutral-200/50 dark:border-neutral-800 px-4 flex items-center gap-3">
+          <div className="skeleton h-9 w-9 rounded-lg" />
+          <div className="skeleton h-4 w-40 rounded-md" />
+          <div className="ml-auto skeleton h-9 w-24 rounded-lg" />
+        </div>
+        <div className="flex-1 grid place-items-center">
+          <span className="sr-only">Loading board…</span>
+          <div className="skeleton h-40 w-full max-w-2xl rounded-2xl mx-6" />
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="h-screen flex flex-col">
       <header className="h-16 shrink-0 glass border-b border-neutral-200/50 dark:border-neutral-800 px-4 flex items-center justify-between z-20 animate-pop-in">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/dashboard')} className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <button
+            onClick={() => navigate('/dashboard')}
+            aria-label="Back to boards"
+            className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          >
             <ArrowLeft size={18} />
           </button>
           {canEdit && editingTitle ? (
@@ -213,8 +229,8 @@ export default function BoardEditor() {
               <Eye size={14} /> View only
             </span>
           )}
-          <span className="flex items-center gap-2">
-            <Users size={16} /> {presenceCount} online
+          <span className="hidden sm:flex items-center gap-2" data-numeric aria-live="polite">
+            <Users size={16} aria-hidden="true" /> {presenceCount} online
           </span>
           <NotificationBell socket={socketRef.current} />
           <button
@@ -251,7 +267,9 @@ export default function BoardEditor() {
         {notice && (
           <div
             data-testid="board-notice"
-            className="absolute top-4 left-1/2 -translate-x-1/2 z-40 max-w-[90vw] px-4 py-2 rounded-xl bg-primary-600 text-white text-sm shadow-glow-lg animate-drop-in"
+            role="status"
+            aria-live="polite"
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-40 max-w-[90vw] px-4 py-2 rounded-xl bg-primary-600 text-white text-sm shadow-glow-lg animate-drop-in flex items-center"
           >
             {notice}
             <button
@@ -290,9 +308,14 @@ export default function BoardEditor() {
         )}
 
         {showClearConfirm && (
-          <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/30">
-            <div className="w-80 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 shadow-2xl">
-              <h2 className="font-medium mb-1">Clear this board?</h2>
+          <div className="scrim absolute inset-0 z-40 flex items-center justify-center p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="clear-board-title"
+              className="w-full max-w-sm rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5 shadow-2xl animate-pop-in"
+            >
+              <h2 id="clear-board-title" className="font-medium mb-1">Clear this board?</h2>
               <p className="text-sm text-neutral-500 mb-4">
                 Every object is deleted for everyone. This cannot be undone.
               </p>

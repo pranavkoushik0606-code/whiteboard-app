@@ -57,30 +57,38 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen">
+      <a href="#boards-main" className="skip-link">Skip to boards</a>
       {/* Top bar */}
-      <header className="sticky top-0 z-10 glass border-b border-neutral-200/50 dark:border-neutral-800 px-6 py-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold gradient-text tracking-tight">Boards</h1>
-        <div className="flex items-center gap-3">
+      <header className="sticky top-0 z-10 glass border-b border-neutral-200/50 dark:border-neutral-800 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Boards</h1>
+        <div className="flex items-center gap-1.5 sm:gap-3">
           <NotificationBell socket={socketRef.current} />
-          <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <button
+            onClick={toggleTheme}
+            aria-label={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+            className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          >
             {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
           </button>
           <button
             onClick={() => navigate('/settings')}
+            aria-label="Open settings"
             className="p-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
           >
             <SettingsIcon size={18} />
           </button>
           <div
-            className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-medium"
+            className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-white text-sm font-medium ring-2 ring-white/70 dark:ring-white/10"
             style={{ backgroundColor: user?.color }}
+            title={user?.name}
+            aria-hidden="true"
           >
             {user?.name?.[0]?.toUpperCase()}
           </div>
         </div>
       </header>
 
-      <main className="p-6 max-w-6xl mx-auto">
+      <main id="boards-main" className="p-4 sm:p-6 max-w-6xl mx-auto">
         {/* Controls */}
         <div className="flex flex-wrap items-center gap-3 mb-6">
           <button
@@ -100,13 +108,20 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="flex rounded-xl border border-neutral-300 dark:border-neutral-700 overflow-hidden">
+          <div
+            role="group"
+            aria-label="Filter boards"
+            className="flex rounded-xl border border-neutral-300 dark:border-neutral-700 overflow-hidden max-w-full overflow-x-auto"
+          >
             {(['all', 'recent', 'favorite', 'shared'] as Filter[]).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`px-3 py-2 text-sm capitalize ${
-                  filter === f ? 'bg-primary-600 text-white' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                aria-pressed={filter === f}
+                className={`px-3 py-2 text-sm capitalize whitespace-nowrap transition ${
+                  filter === f
+                    ? 'bg-primary-600 text-white'
+                    : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
                 }`}
               >
                 {f}
@@ -117,13 +132,17 @@ export default function Dashboard() {
           <div className="flex rounded-xl border border-neutral-300 dark:border-neutral-700 overflow-hidden">
             <button
               onClick={() => setView('grid')}
-              className={`p-2 ${view === 'grid' ? 'bg-primary-600 text-white' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+              aria-label="Grid view"
+              aria-pressed={view === 'grid'}
+              className={`p-2 transition ${view === 'grid' ? 'bg-primary-600 text-white' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
             >
               <Grid3x3 size={16} />
             </button>
             <button
               onClick={() => setView('list')}
-              className={`p-2 ${view === 'list' ? 'bg-primary-600 text-white' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+              aria-label="List view"
+              aria-pressed={view === 'list'}
+              className={`p-2 transition ${view === 'list' ? 'bg-primary-600 text-white' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
             >
               <List size={16} />
             </button>
@@ -136,7 +155,7 @@ export default function Dashboard() {
             No boards yet — create your first one to get started.
           </div>
         ) : view === 'grid' ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5 stagger">
+          <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5 stagger">
             {boards.map((b) => (
               <div
                 key={b._id}

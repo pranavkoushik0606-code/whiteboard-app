@@ -24,19 +24,16 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(32rem 32rem at 10% 14%, rgba(168, 85, 247, .38), transparent 60%),
-    radial-gradient(30rem 30rem at 88% 10%, rgba(244, 63, 94, .32), transparent 60%),
-    radial-gradient(30rem 30rem at 92% 72%, rgba(14, 165, 233, .34), transparent 60%),
-    radial-gradient(28rem 28rem at 22% 86%, rgba(132, 204, 22, .28), transparent 60%),
-    radial-gradient(26rem 26rem at 55% 50%, rgba(251, 191, 36, .22), transparent 60%);
-  animation: drift 22s ease-in-out infinite, aurora 14s ease-in-out infinite;
+    radial-gradient(40rem 40rem at 8% 10%, rgba(168, 85, 247, .16), transparent 62%),
+    radial-gradient(36rem 36rem at 94% 18%, rgba(14, 165, 233, .14), transparent 62%),
+    radial-gradient(34rem 34rem at 60% 96%, rgba(244, 63, 94, .11), transparent 62%);
+  animation: drift 40s ease-in-out infinite;
 }
 .dark body::before {
   background:
-    radial-gradient(32rem 32rem at 10% 14%, rgba(168, 85, 247, .34), transparent 60%),
-    radial-gradient(30rem 30rem at 88% 10%, rgba(244, 63, 94, .24), transparent 60%),
-    radial-gradient(30rem 30rem at 92% 72%, rgba(14, 165, 233, .26), transparent 60%),
-    radial-gradient(28rem 28rem at 22% 86%, rgba(132, 204, 22, .18), transparent 60%);
+    radial-gradient(40rem 40rem at 8% 10%, rgba(168, 85, 247, .22), transparent 62%),
+    radial-gradient(36rem 36rem at 94% 18%, rgba(14, 165, 233, .16), transparent 62%),
+    radial-gradient(34rem 34rem at 60% 96%, rgba(244, 63, 94, .12), transparent 62%);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -71,18 +68,42 @@ body::before {
     box-shadow: 0 0 0 4px rgba(99, 102, 241, .18);
   }
 
-  h1, h2 { letter-spacing: -0.02em; }
+  /* Type rhythm. Display sizes tighten, body stays open and readable. */
+  h1 { letter-spacing: -0.025em; line-height: 1.15; }
+  h2 { letter-spacing: -0.02em; line-height: 1.25; }
+  h3, h4 { letter-spacing: -0.01em; }
+  p, li { line-height: 1.6; }
+
+  /* Numbers in presence counts,lists and timestamps stop jittering. */
+  time, [data-numeric] { font-variant-numeric: tabular-nums; }
+
+  /* Keyboard focus was visible on inputs but not on buttons or links, which
+     is most of the app. Only for keyboard users -- :focus-visible keeps it off
+     mouse clicks, so nothing looks different for pointer users. */
+  button:focus-visible,
+  a:focus-visible,
+  [role='button']:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid rgb(168 85 247);
+    outline-offset: 2px;
+    border-radius: 0.5rem;
+  }
+
+  ::selection { background: rgba(168, 85, 247, .25); }
+
+  /* Anything that scrolls in a panel should not trap the page scroll. */
+  [data-panel] { overscroll-behavior: contain; }
 }
 
 @layer components {
   /* Frosted panel. Every card, modal and top bar in the app already
      carries .glass, so upgrading it here restyles all of them at once. */
   .glass {
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    background: rgba(255, 255, 255, .72);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    background: rgba(255, 255, 255, .78);
     border-color: rgba(255, 255, 255, .6);
-    box-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 16px 40px -18px rgba(76, 29, 149, .35);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 12px 32px -20px rgba(16, 24, 40, .28);
   }
   .dark .glass {
     background: rgba(20, 20, 30, .68);
@@ -93,25 +114,23 @@ body::before {
   /* Primary actions are already .bg-primary-600 across the app, so the
      gradient is layered onto that class rather than added to markup. */
   .bg-primary-600 {
-    background-image: linear-gradient(135deg, #f43f5e 0%, #a855f7 40%, #6366f1 70%, #0ea5e9 100%);
-    background-size: 180% 180%;
+    background-image: linear-gradient(135deg, #7c3aed 0%, #a855f7 55%, #6366f1 100%);
+    background-size: 160% 160%;
     background-position: 0% 50%;
-    box-shadow: 0 8px 22px -8px rgba(99, 102, 241, .7);
+    box-shadow: 0 6px 16px -6px rgba(124, 58, 237, .55);
     transition: background-position .5s ease, box-shadow .25s, transform .18s;
   }
   .bg-primary-600:hover:not(:disabled) {
     background-position: 100% 50%;
-    box-shadow: 0 12px 30px -8px rgba(168, 85, 247, .8);
+    box-shadow: 0 10px 24px -8px rgba(124, 58, 237, .65);
     transform: translateY(-1px);
   }
 
   .gradient-text {
-    background: linear-gradient(110deg, #f43f5e, #f59e0b 22%, #a855f7 48%, #0ea5e9 72%, #84cc16 95%);
-    background-size: 200% auto;
+    background: linear-gradient(115deg, #7c3aed, #a855f7 45%, #0ea5e9);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    animation: shimmer 3.5s linear infinite;
   }
 
   /* Board tiles and any card that opts in. */
@@ -119,9 +138,9 @@ body::before {
     transition: transform .25s cubic-bezier(.21, 1.02, .73, 1), box-shadow .25s, border-color .25s;
   }
   .card-hover:hover {
-    transform: translateY(-4px);
-    border-color: rgba(139, 92, 246, .45);
-    box-shadow: 0 20px 45px -18px rgba(109, 40, 217, .45);
+    transform: translateY(-3px);
+    border-color: rgba(139, 92, 246, .35);
+    box-shadow: 0 16px 36px -18px rgba(76, 29, 149, .38);
   }
 
   .stagger > * { animation: pop-in .45s cubic-bezier(.21, 1.02, .73, 1) both; }
@@ -146,7 +165,7 @@ body::before {
     inset: -1px;
     border-radius: inherit;
     padding: 1px;
-    background: linear-gradient(120deg, #f43f5e, #a855f7, #0ea5e9, #84cc16);
+    background: linear-gradient(120deg, #a855f7, #6366f1, #0ea5e9);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
@@ -154,5 +173,43 @@ body::before {
     transition: opacity .25s;
     pointer-events: none;
   }
-  .ring-rainbow:hover::after { opacity: .9; }
+  .ring-rainbow:hover::after { opacity: .55; }
+}
+
+@layer components {
+  /* Skip link: present for keyboard and screen-reader users, invisible until
+     focused, and an <a> rather than a <button> so it cannot disturb any
+     button-ordering the tests rely on. */
+  .skip-link {
+    position: absolute;
+    left: 0.75rem;
+    top: -3rem;
+    z-index: 60;
+    padding: 0.5rem 0.9rem;
+    border-radius: 0.75rem;
+    background: rgb(124 58 237);
+    color: #fff;
+    font-size: 0.875rem;
+    transition: top .2s;
+  }
+  .skip-link:focus { top: 0.75rem; }
+
+  /* Loading placeholder that reads as "content is coming", not "it is broken". */
+  .skeleton {
+    background: linear-gradient(90deg,
+      rgba(148, 163, 184, .14) 25%,
+      rgba(148, 163, 184, .28) 37%,
+      rgba(148, 163, 184, .14) 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+
+  /* Modal scrims: dim plus a slight blur reads far more considered than a
+     flat black overlay, and separates the dialog from a busy canvas. */
+  .scrim {
+    background: rgba(15, 12, 25, .38);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    animation: pop-in .18s ease-out both;
+  }
 }
