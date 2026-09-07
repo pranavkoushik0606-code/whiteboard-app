@@ -1,3 +1,5 @@
+import { CLOUDFLARE_RANGES } from './cloudflareRanges.js';
+
 /**
  * Decides what to hand `app.set('trust proxy', ...)`.
  *
@@ -6,6 +8,10 @@
  * left, so the number of proxy hops does not have to be known -- which matters,
  * because Render's is not fixed: probing one deploy returned 10.24.193.138 and
  * 10.28.162.132 for the same caller seconds apart.
+ *
+ * Private addresses are not enough on their own. Render serves *.onrender.com
+ * through Cloudflare, whose edges are public, so "first public address" was the
+ * edge rather than the client -- see cloudflareRanges.js.
  *
  * A number is still honoured as a hop count for hosts where that is genuinely
  * right, but it has to be converted first. `app.set('trust proxy', '1')` does
@@ -18,7 +24,7 @@
  * the chain and hands out a rate-limit bypass; Express rejects it as an invalid
  * IP, and a startup crash is the right outcome.
  */
-export const DEFAULT_TRUST_PROXY = ['loopback', 'uniquelocal'];
+export const DEFAULT_TRUST_PROXY = ['loopback', 'uniquelocal', ...CLOUDFLARE_RANGES];
 
 export function trustProxySetting(raw) {
   if (raw === undefined || raw === null || raw.trim() === '') return DEFAULT_TRUST_PROXY;

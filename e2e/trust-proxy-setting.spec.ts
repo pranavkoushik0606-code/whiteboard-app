@@ -61,6 +61,42 @@ test('the default walks past a private tail of any length', async () => {
   );
 });
 
+test('the Cloudflare edge in front of Render is walked past too', async () => {
+  const dflt = trustProxySetting(undefined);
+
+  // The chain a request to *.onrender.com actually produces: the client, the
+  // Cloudflare edge that terminated it, then Render's internal router. Private
+  // addresses alone were not enough here -- the edge is public, so the walk
+  // used to stop on it and report Cloudflare as the caller.
+  expect(await resolve(dflt, '103.214.63.229, 172.68.175.90, 10.28.1.1')).toBe('103.214.63.229');
+
+  // Edges seen from one real client within five seconds, across four ranges.
+  for (const edge of ['172.69.179.131', '162.158.227.154', '104.23.160.149', '173.245.48.9']) {
+    expect(await resolve(dflt, `103.214.63.229, ${edge}, 10.28.1.1`)).toBe('103.214.63.229');
+  }
+});
+
+test('a public address that is not Cloudflare still stops the walk', async () => {
+  // The list is specific, not "trust anything upstream". Without this the tests
+  // above would pass just as well against a rule that trusted every address.
+  expect(await resolve(trustProxySetting(undefined), '103.214.63.229, 8.8.8.8, 10.28.1.1')).toBe(
+    '8.8.8.8'
+  );
+});
+
+test('forging a Cloudflare address does not push the walk past the real caller', async () => {
+  // A client can write the left-hand end of the chain, so it can put a
+  // Cloudflare range there. Cloudflare appends the address it actually saw to
+  // the right of it, and the walk stops at the first untrusted entry from that
+  // end, so the forgery is never reached.
+  expect(
+    await resolve(
+      trustProxySetting(undefined),
+      '9.9.9.9, 172.68.1.1, 103.214.63.229, 172.68.175.90, 10.28.1.1'
+    )
+  ).toBe('103.214.63.229');
+});
+
 test('a non-numeric value is passed through as a subnet spec', () => {
   expect(trustProxySetting('10.0.0.0/8')).toBe('10.0.0.0/8');
   expect(trustProxySetting('loopback, uniquelocal')).toBe('loopback, uniquelocal');

@@ -54,7 +54,7 @@ reachable database.
 | `JWT_EXPIRES_IN` | `7d` | |
 | `EMAIL_FROM` | `noreply@whiteboard.dev` | only matters once a real SMTP provider replaces Ethereal |
 | `PUBLIC_URL` | the request's own `protocol://host` | origin used to build the absolute URL returned by the image upload. Worth setting in production: the fallback reads a client-supplied `Host` header, and that URL ends up as an object's `src` on a shared board |
-| `TRUST_PROXY` | `loopback, uniquelocal` | which `X-Forwarded-For` entries to believe. The default trusts every private address and takes the first public one, walking right to left — no hop count needed, which matters because the platform's is not fixed. Leave it unset on Render, Fly, Railway and Heroku. **Never set it to `true`**: that trusts the whole chain, and the client writes the left-hand end of it, so it hands out a rate-limit bypass to anyone who sends a header |
+| `TRUST_PROXY` | private ranges + Cloudflare's | which `X-Forwarded-For` entries to believe. The default walks right to left past every private address *and* every Cloudflare edge, stopping at the first address that is neither — no hop count needed, which matters because the platform's is not fixed. Cloudflare is in the list because Render serves `*.onrender.com` through it, so the chain is `client → Cloudflare → Render`. Leave it unset. **Never set it to `true`**: that trusts the whole chain, and the client writes the left-hand end of it, so it hands out a rate-limit bypass to anyone who sends a header. A bare number is read as a hop count, which is almost never what you want here |
 
 **`client/.env`**
 
@@ -144,11 +144,12 @@ catch-all rewrite to `/index.html` so client-side routes deep-link correctly.
    { "ip": "203.0.113.9", "commit": "946e6b3", "trustProxy": "default" }
    ```
 
-   `ip` should be *your* address, not a private one (`10.x`, `172.16–31.x`, `192.168.x`).
-   If it is private, `commit` and `trustProxy` say which of the two causes it is: an old
+   `ip` should be *your* address. If it is not, `commit` and `trustProxy` say why: an old
    `commit` means the deploy has not landed, and a `trustProxy` other than `default` means
    the dashboard is overriding the setting. Those two look identical from the outside
-   otherwise, which is why the fields are there. An earlier version of this file told you to
+   otherwise, which is why the fields are there. If both are right and `ip` is still wrong,
+   check what it is — a Cloudflare address means their published ranges have moved on from
+   the copy in `server/src/config/cloudflareRanges.js` and need refreshing. An earlier version of this file told you to
    set `TRUST_PROXY=1`; on Render that reported a `10.x` router as the caller, which is the
    bug the setting exists to prevent. Getting this wrong is quiet and expensive: without it
    `req.ip` is the proxy for every visitor, so express-rate-limit puts the entire userbase in
