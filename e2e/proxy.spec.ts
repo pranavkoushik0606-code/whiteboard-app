@@ -62,6 +62,17 @@ test('a forged private address does not shift which entry is believed', async ()
   expect(body.ip).toBe('203.0.113.9');
 });
 
+test('health reports the build and the setting, so a wrong ip is diagnosable', async () => {
+  // A wrong `ip` reads identically whether the fix has not deployed yet or has
+  // deployed and something is overriding it. These two fields separate the two
+  // cases. `commit` is null outside a platform that sets it, including here.
+  const { body } = await health();
+
+  expect(body).toHaveProperty('commit');
+  // 'default' means TRUST_PROXY is unset and the subnet list is in force.
+  expect(body.trustProxy).toBe('default');
+});
+
 test('with no proxy headers the socket address is still used', async () => {
   const { body } = await health();
 

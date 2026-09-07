@@ -11,6 +11,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { connectDB } from './config/db.js';
+import { trustProxySetting } from './config/trustProxy.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 import { initSocket } from './socket/socketHandler.js';
 import { migrateFavorites } from './services/favoriteMigration.js';
@@ -47,7 +48,10 @@ const server = http.createServer(app);
 // count does not have to be known -- the walk goes right to left and stops at
 // the first public address, which is the one Render's edge appended. Anything
 // the client forged sits to the left of it and is never reached.
-app.set('trust proxy', process.env.TRUST_PROXY || ['loopback', 'uniquelocal']);
+//
+// See config/trustProxy.js for why a numeric TRUST_PROXY needs converting
+// before it gets here.
+app.set('trust proxy', trustProxySetting(process.env.TRUST_PROXY));
 
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 
@@ -105,8 +109,24 @@ app.use(
 // `ip` is the caller's own address, echoed back so a deploy can be checked for
 // the `trust proxy` setting above without shipping a request to find out. If it
 // comes back as the proxy's address rather than yours, the hop count is wrong.
+// `commit` is the build actually running. Without it a wrong `ip` is ambiguous
+// -- it reads the same whether the fix has not deployed or has deployed and is
+// being overridden -- and that ambiguity cost a deploy cycle to find out.
+// RENDER_GIT_COMMIT is set by Render; the others are the same idea elsewhere.
+const COMMIT =
+  process.env.RENDER_GIT_COMMIT ||
+  process.env.SOURCE_VERSION ||
+  process.env.GIT_COMMIT ||
+  null;
+
 app.get('/api/health', (req, res) =>
-  res.json({ status: 'ok', time: new Date().toISOString(), ip: req.ip })
+  res.json({
+    status: 'ok',
+    time: new Date().toISOString(),
+    ip: req.ip,
+    commit: COMMIT && COMMIT.slice(0, 7),
+    trustProxy: process.env.TRUST_PROXY ?? 'default',
+  })
 );
 app.use('/api/auth', authRoutes);
 app.use('/api/boards', boardRoutes);

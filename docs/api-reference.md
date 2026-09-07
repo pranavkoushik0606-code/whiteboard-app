@@ -19,12 +19,17 @@ Errors are `{ message, stack? }` (`stack` only when `NODE_ENV !== 'production'`)
 |---|---|---|
 | GET | `/api/health` | none |
 
-→ `{ status: 'ok', time: <ISO string>, ip: <caller's address> }`
+→ `{ status: 'ok', time: <ISO string>, ip, commit, trustProxy }`
 
-`ip` is `req.ip`, echoed back so a deployment can be checked for its `trust proxy`
-setting from outside. Call it against a deployed API: if it answers with your own
-address, the hop count is right; if it answers with the platform's proxy address,
-every visitor looks like the same person to the rate limiter.
+| Field | Meaning |
+|---|---|
+| `ip` | `req.ip`. Should be the caller's own address. A private one (`10.x`, `172.16–31.x`, `192.168.x`) means `trust proxy` is not resolving the chain, and every visitor looks like the same person to the rate limiter |
+| `commit` | first 7 characters of `RENDER_GIT_COMMIT` / `SOURCE_VERSION` / `GIT_COMMIT`, or `null` where none is set (local runs). The build actually serving |
+| `trustProxy` | the raw `TRUST_PROXY` value, or `'default'` when unset |
+
+The last two exist because a wrong `ip` on its own is ambiguous: it reads identically
+whether a fix has not deployed yet or has deployed and is being overridden by the
+dashboard. `commit` distinguishes the first, `trustProxy` the second.
 
 ---
 

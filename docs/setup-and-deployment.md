@@ -137,12 +137,20 @@ catch-all rewrite to `/index.html` so client-side routes deep-link correctly.
    authenticated but not board-scoped, and nothing ever deletes a file.
    Set `PUBLIC_URL` to the API's own origin while you are there, so the returned absolute
    URL does not come from a request header.
-5. **Check `trust proxy` landed** — `curl https://<your-api>/api/health` should answer with
-   *your* IP address in `ip`. If it answers with a private address (`10.x`, `172.16–31.x`,
-   `192.168.x`) then something is overriding the default — check that `TRUST_PROXY` is not
-   set in the dashboard, since a hop count there defeats it. An earlier version of this file
-   told you to set `TRUST_PROXY=1`; on Render that reported a `10.x` router as the caller,
-   which is the bug the setting exists to prevent. Getting this wrong is quiet and expensive: without it
+5. **Check `trust proxy` landed** — `curl https://<your-api>/api/health` answers with three
+   fields that matter:
+
+   ```json
+   { "ip": "203.0.113.9", "commit": "946e6b3", "trustProxy": "default" }
+   ```
+
+   `ip` should be *your* address, not a private one (`10.x`, `172.16–31.x`, `192.168.x`).
+   If it is private, `commit` and `trustProxy` say which of the two causes it is: an old
+   `commit` means the deploy has not landed, and a `trustProxy` other than `default` means
+   the dashboard is overriding the setting. Those two look identical from the outside
+   otherwise, which is why the fields are there. An earlier version of this file told you to
+   set `TRUST_PROXY=1`; on Render that reported a `10.x` router as the caller, which is the
+   bug the setting exists to prevent. Getting this wrong is quiet and expensive: without it
    `req.ip` is the proxy for every visitor, so express-rate-limit puts the entire userbase in
    one bucket — the auth limiter becomes 20 login attempts per 15 minutes *for the whole
    site*, not per person — and `req.protocol` reads `http` behind a TLS-terminating proxy,
