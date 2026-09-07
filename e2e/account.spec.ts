@@ -46,8 +46,10 @@ test('the password is required, not just the token', async () => {
   const missing = await deleteAccountWith(user, {});
   expect(missing.status).toBe(400);
 
+  // 400 rather than 401 on purpose — the client turns any 401 into a logout and
+  // a redirect, which would hide this instead of showing it.
   const wrong = await deleteAccountWith(user, { password: 'not-my-password' });
-  expect(wrong.status).toBe(401);
+  expect(wrong.status).toBe(400);
   expect(wrong.body.message).toBe('Incorrect password');
 
   // Still very much alive.

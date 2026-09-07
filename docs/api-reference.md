@@ -46,7 +46,10 @@ Details:
 - **account deletion** — asks for the password even though the caller already holds a valid
   token. This is the only endpoint that destroys data it cannot put back, and a token sits in
   `localStorage` for seven days; re-authenticating is what stops a stolen one being an erase
-  button. `400` with no password, `401` with the wrong one.
+  button. `400` with no password, and `400` — not `401` — with the wrong one: the client's
+  axios interceptor turns every `401` into a logout and a redirect to `/login`, so a `401`
+  here would sign you out rather than tell you that you mistyped. `changePassword` answers
+  `400` for the same reason.
 
   What it does is in `services/accountDeletion.js`, and the interesting part is what
   *survives*:

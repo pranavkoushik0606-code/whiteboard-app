@@ -73,7 +73,13 @@ one, falling back to a gradient placeholder.
   and a reload would 403 at the door
 
 **Settings** — change display name (`PUT /auth/profile`), theme toggle, change password
-(`PUT /auth/change-password`), log out.
+(`PUT /auth/change-password`), log out, and delete account (`DELETE /auth/account`).
+
+Deletion is two steps behind a password: the first click only reveals the confirmation, and
+the form says plainly that boards you own go with you and what you drew on other people's
+boards stays. On success the client logs out and goes to `/signup` itself rather than waiting
+to be bounced — the token is dead the moment the row is, so every request the page would
+make next is a 401.
 
 `useSocket(boardId?)` opens one connection per page. With a board it joins that room and
 leaves on unmount; **without** one it still connects, because the server puts every

@@ -129,8 +129,12 @@ export const deleteMyAccount = asyncHandler(async (req, res) => {
   // req.user comes from `protect`, which does not select the password.
   const user = await User.findById(req.user._id).select('+password');
   if (!user) return res.status(404).json({ message: 'User not found' });
+  // 400, not the 401 a failed credential would normally get: the client's axios
+  // interceptor treats every 401 as an expired session and bounces to /login, so
+  // a 401 here would log you out instead of telling you that you typed your
+  // password wrong. `changePassword` answers 400 for the same reason.
   if (!(await user.comparePassword(password))) {
-    return res.status(401).json({ message: 'Incorrect password' });
+    return res.status(400).json({ message: 'Incorrect password' });
   }
 
   const summary = await deleteAccount(req.app.get('io'), user._id);
