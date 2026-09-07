@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { API_URL } from './config';
+import { apiRaw, signup } from './helpers';
 // @ts-expect-error -- plain JS module, no types
 import {
   usingCloudinary,
@@ -133,4 +134,23 @@ test('health says which store is live', async () => {
   // the uploads start disappearing.
   expect(body.imageStore).toBe('disk');
   expect(body.imageStoreError).toBeNull();
+});
+
+test('the diagnose route says the disk is in use, and needs a login', async () => {
+  // Unauthenticated it must not answer at all: it reports how the deployment is
+  // configured, which is nobody's business but a signed-in user's.
+  const anon = await apiRaw('GET', '/uploads/diagnose');
+  expect(anon.status).toBe(401);
+
+  const user = await signup('Diagnoser');
+  const { status, body } = await apiRaw('GET', '/uploads/diagnose', { token: user.token });
+
+  // No credentials in the suite, so this is the honest answer. In production it
+  // is the difference between "configured" and "actually works" -- /api/health
+  // can only report the first, and a wrong secret looks identical to a right
+  // one until an upload fails.
+  expect(status).toBe(200);
+  expect(body.store).toBe('disk');
+  expect(body.ok).toBe(false);
+  expect(body.message).toContain('local disk');
 });

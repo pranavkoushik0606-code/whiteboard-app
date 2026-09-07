@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { protect } from '../middleware/auth.js';
-import { uploadImage } from '../controllers/uploadController.js';
+import { diagnoseStore, uploadImage } from '../controllers/uploadController.js';
 import { EXTENSIONS, MAX_IMAGE_BYTES } from '../services/imageStore.js';
 
 export { MAX_IMAGE_BYTES };
@@ -42,5 +42,6 @@ const receiveImage = (req, res, next) =>
 
 const router = express.Router();
 router.post('/image', protect, receiveImage, uploadImage);
+router.get('/diagnose', protect, diagnoseStore);
 
 export default router;

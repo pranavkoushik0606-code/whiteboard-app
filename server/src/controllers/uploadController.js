@@ -1,4 +1,4 @@
-import { storeImage, usingCloudinary } from '../services/imageStore.js';
+import { pingCloudinary, storeImage, usingCloudinary } from '../services/imageStore.js';
 
 // @route POST /api/uploads/image
 //
@@ -37,4 +37,20 @@ export const uploadImage = async (req, res) => {
     ''
   );
   res.status(201).json({ url: `${origin}${stored.path}`, path: stored.path });
+};
+
+// @route GET /api/uploads/diagnose
+// Whether the configured image store actually works, as opposed to merely
+// being configured. /api/health answers the second question; only Cloudinary
+// can answer the first, so this asks it.
+export const diagnoseStore = async (req, res) => {
+  if (!usingCloudinary()) {
+    return res.json({
+      store: 'disk',
+      ok: false,
+      message: 'Uploads are going to the local disk. On an ephemeral host they will not survive a restart.',
+    });
+  }
+  const result = await pingCloudinary();
+  res.status(result.ok ? 200 : 502).json({ store: 'cloudinary', ...result });
 };

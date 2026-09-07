@@ -35,6 +35,26 @@ dashboard. `commit` distinguishes the first, `trustProxy` the second.
 
 ---
 
+## Uploads — `/api/uploads`
+
+| Method | Path | Auth |
+|---|---|---|
+| GET | `/api/uploads/diagnose` | required |
+
+→ `{ store, ok, message }`
+
+Asks the configured store whether it actually works, which `/api/health` cannot:
+`imageStore: 'cloudinary'` only means the variables are present and well-formed. A
+mistyped `api_secret` looks identical to a correct one until an upload returns 502,
+and the reason is then only in the server's logs. This returns Cloudinary's own
+verdict — `Invalid Signature`, `Invalid cloud_name`, or success. `502` when the
+store is configured but rejecting, `200` otherwise.
+
+Authenticated because it describes how the deployment is set up. The upstream
+message names configuration faults and never contains the key or secret.
+
+---
+
 ## Auth — `/api/auth`
 
 | Method | Path | Auth | Body | Returns |

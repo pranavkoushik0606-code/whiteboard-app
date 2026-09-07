@@ -125,6 +125,40 @@ async function writeToDisk(buffer, mimetype) {
 }
 
 /**
+ * Asks Cloudinary whether the credentials actually work.
+ *
+ * `usingCloudinary()` only says the variables are present and shaped right. It
+ * cannot tell a correct secret from a mistyped one, and the difference does not
+ * show up until someone uploads an image and gets a 502 — at which point the
+ * only record of *why* is a line in the host's logs. This closes that gap: it
+ * is one authenticated call that returns Cloudinary's own verdict.
+ *
+ * The upstream message is passed through. It names configuration faults
+ * ("Invalid Signature", "Invalid cloud_name") and never contains the key or
+ * secret, and the route is behind `protect`, so the trade is a small amount of
+ * config detail shown to signed-in users against not having to read server logs
+ * to configure the server.
+ */
+export async function pingCloudinary() {
+  const problem = cloudinaryUrlProblem();
+  if (problem) return { ok: false, configured: false, message: problem };
+  if (!usingCloudinary()) {
+    return { ok: false, configured: false, message: 'No Cloudinary credentials are set' };
+  }
+  try {
+    const cloudinary = await configureCloudinary();
+    await cloudinary.api.ping();
+    return { ok: true, configured: true, message: 'Cloudinary accepted the credentials' };
+  } catch (err) {
+    return {
+      ok: false,
+      configured: true,
+      message: err?.error?.message || err?.message || 'Cloudinary rejected the credentials',
+    };
+  }
+}
+
+/**
  * Returns `{ url }` for a remote store and `{ path }` for the local one.
  *
  * The shapes are different on purpose. A local file has no absolute URL until
