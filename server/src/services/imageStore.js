@@ -3,7 +3,6 @@ import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { v2 as cloudinary } from 'cloudinary';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const uploadsDir = path.join(__dirname, '../../uploads');
@@ -43,18 +42,52 @@ export const EXTENSIONS = {
  * module-level constant would freeze whatever the environment looked like when
  * the first import happened.
  */
+/**
+ * Why a bad CLOUDINARY_URL must not reach the SDK.
+ *
+ * The SDK parses the variable when its module is *imported*, not when it is
+ * used, and throws on anything that does not begin `cloudinary://`. Importing
+ * it at the top of this file therefore meant one mistyped environment variable
+ * crashed the whole API at boot -- auth, boards, sockets, all of it -- over a
+ * setting that only affects image uploads. A deploy failed exactly that way.
+ *
+ * The likeliest mistake is not a typo. Cloudinary's dashboard shows the value
+ * as `CLOUDINARY_URL=cloudinary://...`, and pasting the whole line is the
+ * obvious thing to do, so it gets its own message.
+ */
+export function cloudinaryUrlProblem() {
+  const raw = process.env.CLOUDINARY_URL;
+  if (raw === undefined || raw.trim() === '') return null;
+
+  const value = raw.trim();
+  if (value.startsWith('CLOUDINARY_URL=')) {
+    return 'CLOUDINARY_URL includes the variable name. Set the value to just the part starting cloudinary://';
+  }
+  if (!value.startsWith('cloudinary://')) {
+    return `CLOUDINARY_URL must start with cloudinary:// (got ${value.slice(0, 12)}...)`;
+  }
+  return null;
+}
+
 export function usingCloudinary() {
+  if (process.env.CLOUDINARY_URL) return !cloudinaryUrlProblem();
   return Boolean(
-    process.env.CLOUDINARY_URL ||
-      (process.env.CLOUDINARY_CLOUD_NAME &&
-        process.env.CLOUDINARY_API_KEY &&
-        process.env.CLOUDINARY_API_SECRET)
+    process.env.CLOUDINARY_CLOUD_NAME &&
+      process.env.CLOUDINARY_API_KEY &&
+      process.env.CLOUDINARY_API_SECRET
   );
 }
 
-function configureCloudinary() {
-  // CLOUDINARY_URL is read by the SDK on its own; the split form is not.
-  if (!process.env.CLOUDINARY_URL) {
+async function configureCloudinary() {
+  // Imported here rather than at the top of the file so that a malformed
+  // CLOUDINARY_URL can only fail an upload, never the process. See above.
+  const { v2: cloudinary } = await import('cloudinary');
+
+  if (process.env.CLOUDINARY_URL) {
+    // Trailing whitespace survives a dashboard paste and the SDK does not trim.
+    process.env.CLOUDINARY_URL = process.env.CLOUDINARY_URL.trim();
+  } else {
+    // The split form is not read from the environment by the SDK.
     cloudinary.config({
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       api_key: process.env.CLOUDINARY_API_KEY,
@@ -62,10 +95,11 @@ function configureCloudinary() {
     });
   }
   cloudinary.config({ secure: true });
+  return cloudinary;
 }
 
-function uploadToCloudinary(buffer) {
-  configureCloudinary();
+async function uploadToCloudinary(buffer) {
+  const cloudinary = await configureCloudinary();
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {

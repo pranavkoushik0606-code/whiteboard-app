@@ -5,6 +5,7 @@ import { API_URL } from './config';
 // @ts-expect-error -- plain JS module, no types
 import {
   usingCloudinary,
+  cloudinaryUrlProblem,
   EXTENSIONS,
   storeImage,
   uploadsDir,
@@ -94,6 +95,34 @@ test('every accepted mimetype maps to an image extension', () => {
   }
 });
 
+test('a CLOUDINARY_URL that cannot work is rejected, not handed to the SDK', () => {
+  // The SDK parses this variable when its module is imported and throws on a
+  // bad one, so importing it eagerly meant a mistyped environment variable
+  // crashed the whole API at boot -- over a setting that only affects uploads.
+  // A deploy failed exactly that way. The import is lazy now and these never
+  // reach it.
+  withEnv({ CLOUDINARY_URL: 'https://cloudinary.com/console' }, () => {
+    expect(usingCloudinary()).toBe(false);
+    expect(cloudinaryUrlProblem()).toContain('must start with cloudinary://');
+  });
+
+  // The likeliest mistake by a distance: Cloudinary's dashboard displays the
+  // value as `CLOUDINARY_URL=cloudinary://...` and pasting the whole line is
+  // the obvious thing to do. It gets its own message.
+  withEnv({ CLOUDINARY_URL: 'CLOUDINARY_URL=cloudinary://k:s@cloud' }, () => {
+    expect(usingCloudinary()).toBe(false);
+    expect(cloudinaryUrlProblem()).toContain('includes the variable name');
+  });
+
+  // Whitespace from a paste is survivable, not a misconfiguration.
+  withEnv({ CLOUDINARY_URL: '  cloudinary://k:s@cloud\n' }, () => {
+    expect(usingCloudinary()).toBe(true);
+    expect(cloudinaryUrlProblem()).toBeNull();
+  });
+
+  withEnv({}, () => expect(cloudinaryUrlProblem()).toBeNull());
+});
+
 test('health says which store is live', async () => {
   const res = await fetch(`${API_URL}/api/health`);
   const body = await res.json();
@@ -102,4 +131,5 @@ test('health says which store is live', async () => {
   // production it is the one call that catches a missing CLOUDINARY_URL before
   // the uploads start disappearing.
   expect(body.imageStore).toBe('disk');
+  expect(body.imageStoreError).toBeNull();
 });

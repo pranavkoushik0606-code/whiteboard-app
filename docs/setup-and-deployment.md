@@ -130,9 +130,15 @@ catch-all rewrite to `/index.html` so client-side routes deep-link correctly.
 3. **Vercel** — import the `client/` directory; set `VITE_API_URL` and `VITE_SOCKET_URL` to
    the Render URL.
 4. **Uploads → Cloudinary** — set `CLOUDINARY_URL` in the Render dashboard. Sign in at
-   cloudinary.com, and the dashboard shows an *API Environment variable* of the form
-   `cloudinary://<key>:<secret>@<cloud>`; paste it whole. Nothing else is needed — the free
-   tier is ample and the app creates the folder on first upload.
+   cloudinary.com, and the dashboard shows an *API Environment variable*. Set the value to
+   **only the part from `cloudinary://` onwards** — the dashboard displays it as
+   `CLOUDINARY_URL=cloudinary://...`, and including that `CLOUDINARY_URL=` prefix is the
+   easiest mistake to make here. Nothing else is needed; the free tier is ample and the app
+   creates the folder on first upload.
+
+   `render.yaml` already declares this key, so if the service is blueprint-managed the row
+   exists in the dashboard with an empty value — edit that one rather than adding a second,
+   which Render rejects as a duplicate.
 
    Skipping this is not a small thing. Without it images go to the container filesystem,
    which Render wipes on every restart, and a free service sleeps after ~15 minutes of no
@@ -156,9 +162,10 @@ catch-all rewrite to `/index.html` so client-side routes deep-link correctly.
    }
    ```
 
-   `imageStore` should say `cloudinary` after step 4. If it says `disk`, the credentials are
-   missing or only partly filled in — the split form needs all three parts, and two of three
-   deliberately reads as unconfigured rather than half-working.
+   `imageStore` should say `cloudinary` after step 4. If it says `disk`, check
+   `imageStoreError`: it names the problem when `CLOUDINARY_URL` is set but unusable, and is
+   `null` when the variable simply is not there. The split form needs all three parts, and
+   two of three deliberately reads as unconfigured rather than half-working.
 
    `ip` should be *your* address. If it is not, `commit` and `trustProxy` say why: an old
    `commit` means the deploy has not landed, and a `trustProxy` other than `default` means

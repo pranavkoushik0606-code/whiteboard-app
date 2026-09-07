@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 
 import { connectDB } from './config/db.js';
 import { trustProxySetting } from './config/trustProxy.js';
-import { usingCloudinary } from './services/imageStore.js';
+import { usingCloudinary, cloudinaryUrlProblem } from './services/imageStore.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 import { initSocket } from './socket/socketHandler.js';
 import { migrateFavorites } from './services/favoriteMigration.js';
@@ -131,6 +131,10 @@ app.get('/api/health', (req, res) =>
     // invisible until an upload 404s an hour later, by which time the file is
     // gone; this makes it one call to check.
     imageStore: usingCloudinary() ? 'cloudinary' : 'disk',
+    // Set but unusable is a different state from not set, and much more
+    // confusing: the dashboard looks configured while uploads go to a disk
+    // that is about to be wiped. Named rather than folded into 'disk'.
+    imageStoreError: cloudinaryUrlProblem(),
   })
 );
 app.use('/api/auth', authRoutes);
@@ -156,5 +160,15 @@ connectDB()
   .then(() => migrateFavorites())
   .then(({ migrated }) => {
     if (migrated) console.log(`[migration] moved ${migrated} favourite(s) off Board`);
-    server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+      // Loud, because the alternative is finding out when an image 404s a day
+      // later. It is a warning and not a crash on purpose: nothing else in the
+      // app depends on this, so it must not be able to take the API down.
+      const problem = cloudinaryUrlProblem();
+      if (problem) console.error(`[uploads] ${problem} -- falling back to local disk`);
+      else if (!usingCloudinary()) {
+        console.warn('[uploads] no Cloudinary credentials; images go to the local disk');
+      }
+    });
   });

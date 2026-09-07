@@ -27,6 +27,7 @@ Errors are `{ message, stack? }` (`stack` only when `NODE_ENV !== 'production'`)
 | `commit` | first 7 characters of `RENDER_GIT_COMMIT` / `SOURCE_VERSION` / `GIT_COMMIT`, or `null` where none is set (local runs). The build actually serving |
 | `trustProxy` | the raw `TRUST_PROXY` value, or `'default'` when unset |
 | `imageStore` | `'cloudinary'` when credentials are configured, `'disk'` otherwise. `'disk'` on a host with an ephemeral filesystem means uploads will 404 after the next restart |
+| `imageStoreError` | why a `CLOUDINARY_URL` that *is* set is not being used, or `null`. Set-but-unusable is the confusing state — the dashboard looks configured while uploads go to a disk that is about to be wiped |
 
 The last two exist because a wrong `ip` on its own is ambiguous: it reads identically
 whether a fix has not deployed yet or has deployed and is being overridden by the
