@@ -36,10 +36,18 @@ const server = http.createServer(app);
 //  - `req.protocol` builds the upload URL, which was coming back as `http://`
 //    and getting embedded as an image `src` on an HTTPS page.
 //
-// A hop *count*, never `true`. `true` trusts the whole X-Forwarded-For chain,
-// which the client writes the left-hand end of -- that hands anyone a rate
-// limit bypass, and express-rate-limit rejects the combination outright.
-app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
+// Never `true`: that trusts the whole X-Forwarded-For chain, which the client
+// writes the left-hand end of, and hands anyone a rate limit bypass.
+// express-rate-limit rejects the combination outright.
+//
+// A subnet list rather than the hop count this used to be. The count was wrong:
+// `1` on Render still reported a 10.x router as `req.ip`, and the address
+// alternated between two of them request to request, so the chain is neither
+// one hop nor a fixed length. Trusting every private address instead means the
+// count does not have to be known -- the walk goes right to left and stops at
+// the first public address, which is the one Render's edge appended. Anything
+// the client forged sits to the left of it and is never reached.
+app.set('trust proxy', process.env.TRUST_PROXY || ['loopback', 'uniquelocal']);
 
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 

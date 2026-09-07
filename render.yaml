@@ -28,8 +28,8 @@ services:
       - key: CLIENT_URL
         sync: false
 
-      # One platform router sits in front of the process. Without this req.ip is
-      # Render's address for every visitor, so express-rate-limit puts the whole
-      # userbase in one bucket, and req.protocol reads http behind Render's TLS.
-      - key: TRUST_PROXY
-        value: 1
+      # TRUST_PROXY is deliberately not set. It overrides the app's default,
+      # which trusts every private address in X-Forwarded-For and takes the
+      # first public one. A count was tried here and was wrong: `1` reported a
+      # 10.x Render router as req.ip, which is the shared-rate-limit-bucket bug
+      # the setting exists to prevent. Set it only to override that default.

@@ -54,7 +54,7 @@ reachable database.
 | `JWT_EXPIRES_IN` | `7d` | |
 | `EMAIL_FROM` | `noreply@whiteboard.dev` | only matters once a real SMTP provider replaces Ethereal |
 | `PUBLIC_URL` | the request's own `protocol://host` | origin used to build the absolute URL returned by the image upload. Worth setting in production: the fallback reads a client-supplied `Host` header, and that URL ends up as an object's `src` on a shared board |
-| `TRUST_PROXY` | `1` | how many proxy hops in front of the app to believe. `1` is right for Render, Fly, Railway and Heroku — one platform router in front of your process. Set it to `0` only when nothing is in front of the app at all. **Never set it to `true`**: that trusts the whole `X-Forwarded-For` chain, and the client writes the left-hand end of it, so it hands out a rate-limit bypass to anyone who sends a header |
+| `TRUST_PROXY` | `loopback, uniquelocal` | which `X-Forwarded-For` entries to believe. The default trusts every private address and takes the first public one, walking right to left — no hop count needed, which matters because the platform's is not fixed. Leave it unset on Render, Fly, Railway and Heroku. **Never set it to `true`**: that trusts the whole chain, and the client writes the left-hand end of it, so it hands out a rate-limit bypass to anyone who sends a header |
 
 **`client/.env`**
 
@@ -138,8 +138,11 @@ catch-all rewrite to `/index.html` so client-side routes deep-link correctly.
    Set `PUBLIC_URL` to the API's own origin while you are there, so the returned absolute
    URL does not come from a request header.
 5. **Check `trust proxy` landed** — `curl https://<your-api>/api/health` should answer with
-   *your* IP address in `ip`. If it answers with the platform's proxy address instead, raise
-   `TRUST_PROXY` by one and redeploy. Getting this wrong is quiet and expensive: without it
+   *your* IP address in `ip`. If it answers with a private address (`10.x`, `172.16–31.x`,
+   `192.168.x`) then something is overriding the default — check that `TRUST_PROXY` is not
+   set in the dashboard, since a hop count there defeats it. An earlier version of this file
+   told you to set `TRUST_PROXY=1`; on Render that reported a `10.x` router as the caller,
+   which is the bug the setting exists to prevent. Getting this wrong is quiet and expensive: without it
    `req.ip` is the proxy for every visitor, so express-rate-limit puts the entire userbase in
    one bucket — the auth limiter becomes 20 login attempts per 15 minutes *for the whole
    site*, not per person — and `req.protocol` reads `http` behind a TLS-terminating proxy,

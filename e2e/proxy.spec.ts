@@ -33,12 +33,33 @@ test('the client IP is taken from X-Forwarded-For, not from the socket', async (
 test('only the hop the proxy added is trusted, not the chain the client wrote', async () => {
   // A client can put anything at the left-hand end of X-Forwarded-For. With
   // `trust proxy: true` the app would believe the leftmost entry and hand out a
-  // rate-limit bypass to anyone who sends a header; a hop count of 1 takes the
-  // entry the proxy itself appended and ignores the rest.
+  // rate-limit bypass to anyone who sends a header. Walking right to left stops
+  // at the address the proxy itself appended and ignores the rest.
   const { body } = await health({ 'X-Forwarded-For': '1.2.3.4, 203.0.113.9' });
 
   expect(body.ip).toBe('203.0.113.9');
   expect(body.ip).not.toBe('1.2.3.4');
+});
+
+test('a private address at the end of the chain is walked past, however many there are', async () => {
+  // This is the case a hop count got wrong, and the reason the setting is a
+  // subnet list now. `TRUST_PROXY=1` on Render reported a 10.x router as the
+  // caller -- one shared rate-limit bucket for everyone, which is the bug the
+  // setting exists to prevent. The count of internal hops is not fixed, so the
+  // number that would have been right here is not knowable in advance.
+  const two = await health({ 'X-Forwarded-For': '203.0.113.9, 10.28.1.1' });
+  expect(two.body.ip).toBe('203.0.113.9');
+
+  const three = await health({ 'X-Forwarded-For': '203.0.113.9, 10.28.1.1, 10.24.2.2' });
+  expect(three.body.ip).toBe('203.0.113.9');
+});
+
+test('a forged private address does not shift which entry is believed', async () => {
+  // The mirror image of the above: since private addresses are skipped, a client
+  // that prepends one must not push the walk past the genuine entry.
+  const { body } = await health({ 'X-Forwarded-For': '10.0.0.1, 203.0.113.9, 10.28.1.1' });
+
+  expect(body.ip).toBe('203.0.113.9');
 });
 
 test('with no proxy headers the socket address is still used', async () => {
